@@ -22,10 +22,19 @@
                 <a href="">Link</a>
             </div>
 
+            @auth
+                <div>
+                    <a href="/profile">{{auth()->user()->name}}</a>
+                    <a href="/logout">Log out</a>
+                </div>
+            @endauth
+
+            @guest    
             <div>
-                <a href="">Sign Up</a>
-                <a href="">Log In</a>
+                <a href="/register">Sign Up</a>
+                <a href="/login">Log In</a>
             </div>
+            @endguest
         </nav>
 
         <main>
