@@ -9,6 +9,10 @@ class Complaint extends Model
 {
     /** @use HasFactory<\Database\Factories\ComplaintFactory> */
     use HasFactory;
+    protected $fillable = [
+        'complaint',
+    ];
+
 
     public function user(){
         return $this->belongsTo(User::class);
