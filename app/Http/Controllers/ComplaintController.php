@@ -24,7 +24,7 @@ class ComplaintController extends Controller
 
     $complaint = Auth::user()->complaints()->create($attributes);
 
-    return response()->json([
+    return response()->json([ 
         'complaint' => $complaint
     ]);
 }

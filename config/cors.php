@@ -4,15 +4,12 @@
 // Retrieved 2025-11-10, License - CC BY-SA 4.0
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout'],
     'allowed_methods'   => ['*'],
     'allowed_origins'   => [
         'http://localhost:5173',
-        'https://394b47e2a667.ngrok-free.app'
     ],
-    'allowed_origins_patterns' => [
-        '*localhost*'
-    ],
+    'allowed_origins_patterns' => [],
     'allowed_headers'   => ['*'],
     'exposed_headers'   => [],
     'max_age'           => 3600,

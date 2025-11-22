@@ -17,13 +17,13 @@ Route::post('/send-to-py',[PythonController::class,'sendToPy']);
 // Route::post('/complaint',[ComplaintController::class,'store']);
 
 
-Route::view('/index','index')->middleware(['auth']);
+// Route::view('/index','index')->middleware(['auth']);
 
-Route::get('/register',[RegisteredUserController::class,'create']);
-Route::post('/register',[RegisteredUserController::class,'store']);
+// Route::get('/register',[RegisteredUserController::class,'create']);
+// Route::post('/register',[RegisteredUserController::class,'store']);
 
-Route::get('/login',[SessionController::class,'create'])->name('login');
-Route::post('/login',[SessionController::class,'store']);
+// Route::get('/login',[SessionController::class,'create'])->name('login');
+// Route::post('/login',[SessionController::class,'store']);
 
-Route::get('/logout',[SessionController::class,'destroy']);
+// Route::get('/logout',[SessionController::class,'destroy']);
 
