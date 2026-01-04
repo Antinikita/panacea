@@ -1,20 +1,36 @@
-<?php 
-// Source - https://stackoverflow.com/a
-// Posted by Kamyar Safari
-// Retrieved 2025-11-10, License - CC BY-SA 4.0
+<?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
-    'allowed_methods'   => ['*'],
-    'allowed_origins'   => [
+    'paths' => [
+        'api/*',
+        'sanctum/csrf-cookie',
+        'login',
+        'logout',
+        'register',
+        'user',
+        'complaints',
+        'complaints/*', // Добавь это
+    ],
+
+    'allowed_methods' => ['*'],
+
+    'allowed_origins' => [
         'http://localhost:5173',
-        'https://394b47e2a667.ngrok-free.app'
     ],
-    'allowed_origins_patterns' => [
-        '*localhost*'
+
+    'allowed_origins_patterns' => [],
+
+    'allowed_headers' => [
+        'Content-Type',
+        'X-Requested-With',
+        'Authorization',
+        'X-XSRF-TOKEN',
+        'Accept',
     ],
-    'allowed_headers'   => ['*'],
-    'exposed_headers'   => [],
-    'max_age'           => 3600,
+
+    'exposed_headers' => [],
+
+    'max_age' => 0,
+
     'supports_credentials' => true,
 ];

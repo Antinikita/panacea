@@ -1,29 +1,23 @@
 <?php
 
-use App\Http\Controllers\ComplaintController;
-use App\Http\Controllers\PythonController;
-use App\Http\Controllers\RegisteredUserController;
-use App\Http\Controllers\SessionController;
-use App\Models\Complaint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ComplaintController;
+use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 
-Route::get('/', function () {
-    return view('welcome');
+// Auth routes
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
+
+// Protected routes
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
+    
+    Route::post('/logout', [AuthController::class, 'logout']);
+    
+    // Complaint routes
+    Route::apiResource('complaints', ComplaintController::class);
 });
-
-Route::post('/send-to-py',[PythonController::class,'sendToPy']);
-
-// Route
-// Route::post('/complaint',[ComplaintController::class,'store']);
-
-
-Route::view('/index','index')->middleware(['auth']);
-
-Route::get('/register',[RegisteredUserController::class,'create']);
-Route::post('/register',[RegisteredUserController::class,'store']);
-
-Route::get('/login',[SessionController::class,'create'])->name('login');
-Route::post('/login',[SessionController::class,'store']);
-
-Route::get('/logout',[SessionController::class,'destroy']);
-
