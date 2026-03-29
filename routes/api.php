@@ -4,16 +4,25 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ComplaintController;
-use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
+use App\Http\Controllers\ComplaintAIController;
+use App\Http\Controllers\RecommendationController;
 
-Route::get('/sanctum/csrf-cookie', [CsrfCookieController::class, 'show'])->name('sanctum.csrf-cookie');
+// Auth routes
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
 
-
-// Защищенные роуты
+// Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
     
     Route::post('/logout', [AuthController::class, 'logout']);
+    
+    // Complaint routes
+    Route::apiResource('complaints', ComplaintController::class);
+
+    Route::post('/complaints/analyze', [ComplaintAIController::class, 'analyze']);
+
+    Route::apiResource('recommendations', RecommendationController::class);
 });

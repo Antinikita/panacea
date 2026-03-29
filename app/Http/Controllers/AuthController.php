@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
@@ -14,12 +15,16 @@ class AuthController extends Controller
         $attributes = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
+            'sex'=>'nullable|string',
+            'age'=>'nullable|integer',
             'password' => 'required|string|min:6|confirmed',
         ]);
 
         $user = User::create([
             'name' => $attributes['name'],
             'email' => $attributes['email'],
+            'sex'=>$attributes['sex'] ?? 'male',
+            'age'=>$attributes['age'] ?? 30,
             'password' => bcrypt($attributes['password']), // Не забудь хешировать!
         ]);
 
@@ -45,7 +50,11 @@ class AuthController extends Controller
 
     // Пытаемся войти и создать сессию
     if (Auth::attempt($credentials)) {
+        if ($request->hasHeader('X-Requested-With')) {
+
         $request->session()->regenerate(); // Важно для безопасности сессии
+        
+    }
 
         return response()->json([
             'user' => Auth::user(),

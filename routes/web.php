@@ -4,8 +4,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ComplaintController;
+use App\Http\Controllers\ComplaintAIController;
 use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 
+Route::get('/sanctum/csrf-cookie', [CsrfCookieController::class, 'show'])
+    ->name('sanctum.csrf-cookie');
 // Auth routes
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
@@ -20,4 +23,6 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Complaint routes
     Route::apiResource('complaints', ComplaintController::class);
+
+    Route::post('/complaints/analyze', [ComplaintAIController::class, 'analyze']);
 });

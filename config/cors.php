@@ -10,12 +10,15 @@ return [
         'user',
         'complaints',
         'complaints/*', // Добавь это
+        'recommendations',   // Добавь
+        'recommendations/*', // Добавь
     ],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
         'http://localhost:5173',
+        'https://steeply-unremunerated-margarito.ngrok-free.dev'
     ],
 
     'allowed_origins_patterns' => [],

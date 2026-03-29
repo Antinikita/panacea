@@ -7,14 +7,26 @@ use Illuminate\Database\Eloquent\Model;
 
 class Complaint extends Model
 {
-    /** @use HasFactory<\Database\Factories\ComplaintFactory> */
     use HasFactory;
+
     protected $fillable = [
         'complaint',
     ];
 
-
-    public function user(){
+    public function user()
+    {
         return $this->belongsTo(User::class);
+    }
+
+    // Все рекомендации для этой жалобы
+    public function recommendations()
+    {
+        return $this->hasMany(Recommendation::class);
+    }
+
+    // ДОБАВЬ ЭТОТ МЕТОД - последняя рекомендация
+    public function latestRecommendation()
+    {
+        return $this->hasOne(Recommendation::class)->latestOfMany();
     }
 }

@@ -10,47 +10,69 @@ class ComplaintController extends Controller
 {
     public function index()
     {
+        // Загружаем жалобы с последней рекомендацией
         $complaints = Complaint::where('user_id', Auth::id())
+            ->with('latestRecommendation') // Загружаем последнюю рекомендацию
             ->orderBy('created_at', 'desc')
             ->get();
             
-        return response()->json($complaints);  // ✅ Array of complaints
+        return response()->json([
+            'user' => Auth::user(),
+            'complaints' => $complaints
+        ]);
     }
 
     public function store(Request $request)
     {
         $attributes = $request->validate([
-            'complaint' => 'required|string|max:5000', // ✅ MATCH REACT
+            'complaint' => ['required', 'string', 'max:1000']
         ]);
 
         $complaint = Auth::user()->complaints()->create($attributes);
 
-        return response()->json($complaint, 201);  // ✅ Single complaint object
+        return response()->json([
+            'complaint' => $complaint,
+            'message' => 'Complaint created successfully'
+        ], 201);
     }
 
-    public function show($id)
+    public function show(string $id)
     {
-        $complaint = Complaint::where('user_id', Auth::id())->findOrFail($id);
+        $complaint = Complaint::where('user_id', Auth::id())
+            ->with(['recommendations' => function($query) {
+                $query->orderBy('created_at', 'desc');
+            }])
+            ->findOrFail($id);
+
         return response()->json($complaint);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, string $id)
     {
         $request->validate([
-            'complaint' => 'required|string|max:5000',
+            'complaint' => 'required|string|max:1000',
         ]);
 
         $complaint = Complaint::where('user_id', Auth::id())->findOrFail($id);
-        $complaint->update($request->all());  // ✅ title + description
+        
+        $complaint->update([
+            'complaint' => $request->complaint,
+        ]);
 
-        return response()->json($complaint);
+        return response()->json([
+            'complaint' => $complaint,
+            'message' => 'Complaint updated successfully'
+        ]);
     }
 
-    public function destroy($id)
+    public function destroy(string $id)
     {
         $complaint = Complaint::where('user_id', Auth::id())->findOrFail($id);
         $complaint->delete();
 
-        return response()->json(['message' => 'Complaint deleted']);
+        return response()->json([
+            'message' => 'Complaint deleted successfully',
+            'id' => $id
+        ]);
     }
 }

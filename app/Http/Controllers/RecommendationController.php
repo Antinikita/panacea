@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Models\Recommendation;
 use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 
-class RegisteredUserController extends Controller
+class RecommendationController
 {
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        //
+        $recommendations = Recommendation::where('user_id', Auth::id())
+            ->orderBy('created_at', 'desc')
+            ->get();
+            
+        return response()->json($recommendations);
     }
 
     /**
@@ -22,7 +25,7 @@ class RegisteredUserController extends Controller
      */
     public function create()
     {
-        return view('auth.register');
+        //
     }
 
     /**
@@ -30,17 +33,13 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request)
     {
-        $attributes=$request->validate([
-            'name'=>['required','min:3'],
-            'email'=>['required','min:3'],
-            'password'=>['required','confirmed'],
+        $attributes = $request->validate([
+            'recommendation' => 'required|string|max:5000', 
         ]);
 
-        $user=User::create($attributes);
+        $recommendation = Auth::user()->recommendations()->create($attributes);
 
-        Auth::login($user);
-
-        return redirect('/');
+        return response()->json($recommendation, 201);
     }
 
     /**
@@ -48,7 +47,8 @@ class RegisteredUserController extends Controller
      */
     public function show(string $id)
     {
-        //
+        $recommendation = Recommendation::where('user_id', Auth::id())->findOrFail($id);
+        return response()->json($recommendation);
     }
 
     /**

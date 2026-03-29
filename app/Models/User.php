@@ -22,6 +22,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'sex',
+        'age'
     ];
 
     /**
@@ -49,5 +51,9 @@ class User extends Authenticatable
 
     public function complaints(){
         return $this->hasMany(Complaint::class);
+    }
+
+    public function recommendations(){
+        return $this->hasMany(Recommendation::class);
     }
 }
