@@ -1,39 +1,25 @@
 <?php
-
 return [
-    'paths' => [
-        'api/*',
-        'sanctum/csrf-cookie',
-        'login',
-        'logout',
-        'register',
-        'user',
-        'complaints',
-        'complaints/*', // Добавь это
-        'recommendations',   // Добавь
-        'recommendations/*', // Добавь
-    ],
+    'paths' => ['api/*'], // all your routes are under api/*, that's all you need
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
         'http://localhost:5173',
-        'https://steeply-unremunerated-margarito.ngrok-free.dev'
+        'http://127.0.0.1:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5174',
+        'https://steeply-unremunerated-margarito.ngrok-free.dev', // fix: .app not .dev
     ],
 
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => [
-        'Content-Type',
-        'X-Requested-With',
-        'Authorization',
-        'X-XSRF-TOKEN',
-        'Accept',
+        '*'
     ],
 
     'exposed_headers' => [],
+    'max_age' => 86400, // cache preflight for 24h, reduces OPTIONS requests
 
-    'max_age' => 0,
-
-    'supports_credentials' => true,
+    'supports_credentials' => false, // token auth doesn't need cookies/credentials
 ];
