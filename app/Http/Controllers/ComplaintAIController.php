@@ -27,7 +27,7 @@ class ComplaintAIController extends Controller
             }
 
             // ========== МОК: ВКЛЮЧИ ЭТО ДЛЯ ТЕСТА ==========
-            $useMock = false; // Поставь false когда сервер заработает
+            $useMock = true; // Поставь false когда сервер заработает
             
             if ($useMock) {
                 // Имитация ответа от AI-сервера
