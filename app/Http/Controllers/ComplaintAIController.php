@@ -51,6 +51,10 @@ class ComplaintAIController extends Controller
                     ])
                     ->post(env('AI_MODULE_URL'), $payload);
 
+                     Log::info('AI Module Response', [ // LOG THE RESPONSE ALWAYS
+                'status' => $response->status(),
+                'body'   => $response->json() ?? $response->body(),
+            ]);
                 if ($response->failed()) {
                     Log::error('AI Module Error', [
                         'status' => $response->status(),

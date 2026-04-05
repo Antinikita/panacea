@@ -18,4 +18,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/complaints/analyze', [ComplaintAIController::class, 'analyze']);
     Route::apiResource('complaints', ComplaintController::class);
     Route::apiResource('recommendations', RecommendationController::class);
+
+    
 });
+
