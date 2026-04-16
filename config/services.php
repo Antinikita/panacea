@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'ai' => [
+        'url'        => env('AI_MODULE_URL'),
+        'token'      => env('AI_SERVICE_TOKEN'),
+        'use_mock'   => env('AI_USE_MOCK', true),
+        'timeout'    => (int) env('AI_TIMEOUT', 300),
+        'mock_delay' => (int) env('AI_MOCK_DELAY', 0),
+    ],
+
 ];

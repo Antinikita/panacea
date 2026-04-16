@@ -10,15 +10,16 @@ class ComplaintController extends Controller
 {
     public function index()
     {
-        // Загружаем жалобы с последней рекомендацией
+        $perPage = max(1, min(100, (int) request()->integer('per_page', 20)));
+
         $complaints = Complaint::where('user_id', Auth::id())
-            ->with('latestRecommendation') // Загружаем последнюю рекомендацию
+            ->with('latestRecommendation')
             ->orderBy('created_at', 'desc')
-            ->get();
-            
+            ->paginate($perPage);
+
         return response()->json([
             'user' => Auth::user(),
-            'complaints' => $complaints
+            'complaints' => $complaints,
         ]);
     }
 

@@ -18,11 +18,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     
     Route::post('/logout', [AuthController::class, 'logout']);
-    
-    // Complaint routes
-    Route::apiResource('complaints', ComplaintController::class);
 
+    // POST /complaints/analyze должен идти до apiResource, иначе конфликтует с маршрутами /complaints/{complaint}
     Route::post('/complaints/analyze', [ComplaintAIController::class, 'analyze']);
+    Route::apiResource('complaints', ComplaintController::class);
 
     Route::apiResource('recommendations', RecommendationController::class);
 });

@@ -7,6 +7,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @deprecated Заменён `AuthController::login` / `logout` (JSON API). Контроллер больше не маршрутизируется; оставлен как исторический справочник и будет удалён в следующей ревизии.
+ */
 class SessionController extends Controller
 {
     /**

@@ -6,17 +6,19 @@ use App\Models\Recommendation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
-class RecommendationController
+class RecommendationController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
+        $perPage = max(1, min(100, (int) request()->integer('per_page', 20)));
+
         $recommendations = Recommendation::where('user_id', Auth::id())
             ->orderBy('created_at', 'desc')
-            ->get();
-            
+            ->paginate($perPage);
+
         return response()->json($recommendations);
     }
 

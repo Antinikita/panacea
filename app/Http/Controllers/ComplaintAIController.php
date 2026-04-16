@@ -19,29 +19,28 @@ class ComplaintAIController extends Controller
 
         try {
             $complaint = Complaint::with('user')->findOrFail($request->complaint_id);
-            
+
             if ($complaint->user_id !== auth()->id()) {
                 return response()->json([
                     'message' => 'Unauthorized'
                 ], 403);
             }
 
-            // ========== МОК: ВКЛЮЧИ ЭТО ДЛЯ ТЕСТА ==========
-            $useMock = true; // Поставь false когда сервер заработает
-            
+            $useMock = (bool) config('services.ai.use_mock', true);
+
             if ($useMock) {
-                // Имитация ответа от AI-сервера
                 $aiResult = [
                     'reply' => "Thank you for sharing your concern. Based on your complaint about '{$complaint->complaint}', here are my recommendations:\n\n1. **Immediate Action**: Document all relevant details and timestamps related to this issue.\n\n2. **Next Steps**: Consider reaching out to the appropriate department or supervisor to discuss this matter formally.\n\n3. **Follow-up**: Keep a record of all communications and follow up within 3-5 business days if you don't receive a response.\n\n4. **Self-care**: Remember to take care of your mental health during this stressful time. Consider speaking with a counselor if needed.\n\nIf the situation doesn't improve, you may want to escalate this to higher management or HR department.",
                     'sentiment' => 'negative',
                     'category' => 'workplace_issue',
                     'priority' => 'high',
                 ];
-                
-                // Симуляция задержки сервера (опционально)
-                sleep(2); // 2 секунды задержки для реалистичности
+
+                $delay = (int) config('services.ai.mock_delay', 0);
+                if ($delay > 0) {
+                    sleep($delay);
+                }
             } else {
-                // ========== РЕАЛЬНЫЙ ЗАПРОС К AI-СЕРВЕРУ ==========
                 $payload = [
                     'user_id' => (string) $complaint->user->id,
                     'message' => $complaint->complaint,
@@ -53,22 +52,23 @@ class ComplaintAIController extends Controller
                     ],
                     'mode' => 'general',
                 ];
-                
+
                 Log::info('Sending to AI Module', ['payload' => $payload]);
-                
-                $response = Http::timeout(300)->withHeaders([
-        'X-Service-Token' => env('AI_SERVICE_TOKEN'),
-        'X-User-Id'       => (string) $complaint->user->id,
-        'Content-Type'    => 'application/json',
-    ])
-                    ->post(env('AI_MODULE_URL'), $payload);
+
+                $response = Http::timeout((int) config('services.ai.timeout', 300))
+                    ->withHeaders([
+                        'X-Service-Token' => config('services.ai.token'),
+                        'X-User-Id'       => (string) $complaint->user->id,
+                        'Content-Type'    => 'application/json',
+                    ])
+                    ->post(config('services.ai.url'), $payload);
 
                 if ($response->failed()) {
                     Log::error('AI Module Error', [
                         'status' => $response->status(),
                         'body' => $response->body()
                     ]);
-                    
+
                     return response()->json([
                         'message' => 'AI analysis failed',
                         'error' => $response->body()
@@ -79,14 +79,12 @@ class ComplaintAIController extends Controller
                 Log::info('AI Module Response', ['result' => $aiResult]);
             }
 
-            // Извлекаем reply из ответа
-            $replyText = $aiResult['reply'] ?? 
-                         $aiResult['response'] ?? 
-                         $aiResult['message'] ?? 
+            $replyText = $aiResult['reply'] ??
+                         $aiResult['response'] ??
+                         $aiResult['message'] ??
                          $aiResult['answer'] ??
                          'No recommendation provided';
 
-            // Сохраняем в БД
             $recommendation = Recommendation::create([
                 'user_id' => auth()->id(),
                 'complaint_id' => $complaint->id,
@@ -102,7 +100,7 @@ class ComplaintAIController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Complaint AI Analysis Error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'message' => 'Failed to analyze complaint',
                 'error' => $e->getMessage()

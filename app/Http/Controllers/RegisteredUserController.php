@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * @deprecated Заменён `AuthController::register` (JSON API). Контроллер больше не маршрутизируется; оставлен как исторический справочник и будет удалён в следующей ревизии.
+ */
 class RegisteredUserController extends Controller
 {
     /**

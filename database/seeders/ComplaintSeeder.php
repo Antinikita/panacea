@@ -14,9 +14,7 @@ class ComplaintSeeder extends Seeder
      */
     public function run(): void
     {
-        $users=User::factory(50)->create();
-        Complaint::factory(30)->create([
-            'user_id'=>$users->random()->id,
-        ]);
+        $users = User::factory(50)->create();
+        Complaint::factory(30)->recycle($users)->create();
     }
 }

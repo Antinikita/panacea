@@ -8,6 +8,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @deprecated Стаб раннего эксперимента; не зарегистрирован в маршрутах. Оставлен как исторический справочник и будет удалён в следующей ревизии.
+ */
 class JsonSessionController extends Controller
 {
         public function store(Request $request)
