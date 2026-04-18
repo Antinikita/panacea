@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Models\Complaint;
@@ -23,11 +24,18 @@ class ComplaintAIController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
 
-            // Control mock from .env: AI_USE_MOCK=true
-            if (env('AI_USE_MOCK', false)) {
+            // Используем конфиг для управления Mock-режимом
+            $useMock = (bool) config('services.ai.use_mock', true);
+
+            if ($useMock) {
                 $aiResult = [
                     'answer' => "Based on your complaint, here are recommendations:\n\n1. Document all relevant details.\n2. Reach out to the appropriate department.\n3. Follow up within 3-5 business days.",
                 ];
+
+                $delay = (int) config('services.ai.mock_delay', 0);
+                if ($delay > 0) {
+                    sleep($delay);
+                }
             } else {
                 $payload = [
                     'user_id' => (string) $complaint->user->id,
@@ -43,35 +51,39 @@ class ComplaintAIController extends Controller
 
                 Log::info('Sending to AI Module', ['payload' => $payload]);
 
-                $response = Http::timeout(300)
+                $response = Http::timeout((int) config('services.ai.timeout', 300))
                     ->withHeaders([
-                        'X-Service-Token' => env('AI_SERVICE_TOKEN'),
+                        'X-Service-Token' => config('services.ai.token'),
                         'X-User-Id'       => (string) $complaint->user->id,
                         'Content-Type'    => 'application/json',
                     ])
-                    ->post(env('AI_MODULE_URL'), $payload);
+                    ->post(config('services.ai.url'), $payload);
 
-                     Log::info('AI Module Response', [ // LOG THE RESPONSE ALWAYS
-                'status' => $response->status(),
-                'body'   => $response->json() ?? $response->body(),
-            ]);
+                Log::info('AI Module Response', [
+                    'status' => $response->status(),
+                    'body'   => $response->json() ?? $response->body(),
+                ]);
+
                 if ($response->failed()) {
                     Log::error('AI Module Error', [
                         'status' => $response->status(),
                         'body'   => $response->body()
                     ]);
-                    return response()->json(['message' => 'AI analysis failed'], 500);
+
+                    return response()->json([
+                        'message' => 'AI analysis failed',
+                        'error'   => $response->body()
+                    ], 500);
                 }
 
                 $aiResult = $response->json();
-                Log::info('AI Module Response', ['result' => $aiResult]);
             }
 
-            // answer first since that's what your AI server returns
-            $replyText = $aiResult['answer']
-                ?? $aiResult['reply']
-                ?? $aiResult['response']
-                ?? $aiResult['message']
+            // Приоритет отдаем 'answer', так как это формат AI сервера
+            $replyText = $aiResult['answer'] 
+                ?? $aiResult['reply'] 
+                ?? $aiResult['response'] 
+                ?? $aiResult['message'] 
                 ?? 'No recommendation provided';
 
             $recommendation = Recommendation::create([
@@ -88,7 +100,11 @@ class ComplaintAIController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Complaint AI Analysis Error: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to analyze complaint'], 500);
+
+            return response()->json([
+                'message' => 'Failed to analyze complaint',
+                'error'   => $e->getMessage()
+            ], 500);
         }
     }
 }

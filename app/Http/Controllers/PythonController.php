@@ -6,6 +6,9 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 
+/**
+ * @deprecated Предшественник `ComplaintAIController`; интеграция с `127.0.0.1:5001/analyze` устарела. Оставлен как исторический справочник и будет удалён в следующей ревизии.
+ */
 class PythonController extends Controller
 {
     public function sendToPy(Request $request){
