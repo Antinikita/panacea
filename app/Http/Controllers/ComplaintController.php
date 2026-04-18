@@ -1,25 +1,21 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\Complaint;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 
 class ComplaintController extends Controller
 {
     public function index()
     {
-        // Загружаем жалобы с последней рекомендацией
         $complaints = Complaint::where('user_id', Auth::id())
-            ->with('latestRecommendation') // Загружаем последнюю рекомендацию
+            ->with('latestRecommendation')
             ->orderBy('created_at', 'desc')
             ->get();
-            
-        return response()->json([
-            'user' => Auth::user(),
-            'complaints' => $complaints
-        ]);
+
+        return response()->json($complaints); // no need to return user here, frontend already has it
     }
 
     public function store(Request $request)
@@ -30,18 +26,13 @@ class ComplaintController extends Controller
 
         $complaint = Auth::user()->complaints()->create($attributes);
 
-        return response()->json([
-            'complaint' => $complaint,
-            'message' => 'Complaint created successfully'
-        ], 201);
+        return response()->json($complaint, 201);
     }
 
     public function show(string $id)
     {
         $complaint = Complaint::where('user_id', Auth::id())
-            ->with(['recommendations' => function($query) {
-                $query->orderBy('created_at', 'desc');
-            }])
+            ->with(['recommendations' => fn($q) => $q->orderBy('created_at', 'desc')])
             ->findOrFail($id);
 
         return response()->json($complaint);
@@ -54,15 +45,9 @@ class ComplaintController extends Controller
         ]);
 
         $complaint = Complaint::where('user_id', Auth::id())->findOrFail($id);
-        
-        $complaint->update([
-            'complaint' => $request->complaint,
-        ]);
+        $complaint->update(['complaint' => $request->complaint]);
 
-        return response()->json([
-            'complaint' => $complaint,
-            'message' => 'Complaint updated successfully'
-        ]);
+        return response()->json($complaint);
     }
 
     public function destroy(string $id)
@@ -70,9 +55,6 @@ class ComplaintController extends Controller
         $complaint = Complaint::where('user_id', Auth::id())->findOrFail($id);
         $complaint->delete();
 
-        return response()->json([
-            'message' => 'Complaint deleted successfully',
-            'id' => $id
-        ]);
+        return response()->json(['message' => 'Deleted', 'id' => $id]);
     }
 }

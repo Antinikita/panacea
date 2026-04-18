@@ -1,77 +1,39 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\Recommendation;
-use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 
-class RecommendationController
+class RecommendationController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    // GET /api/recommendations — all recommendations for current user
     public function index()
     {
         $recommendations = Recommendation::where('user_id', Auth::id())
+            ->with('complaint') // useful to show which complaint it belongs to
             ->orderBy('created_at', 'desc')
             ->get();
-            
+
         return response()->json($recommendations);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        $attributes = $request->validate([
-            'recommendation' => 'required|string|max:5000', 
-        ]);
-
-        $recommendation = Auth::user()->recommendations()->create($attributes);
-
-        return response()->json($recommendation, 201);
-    }
-
-    /**
-     * Display the specified resource.
-     */
+    // GET /api/recommendations/{id}
     public function show(string $id)
     {
-        $recommendation = Recommendation::where('user_id', Auth::id())->findOrFail($id);
+        $recommendation = Recommendation::where('user_id', Auth::id())
+            ->with('complaint')
+            ->findOrFail($id);
+
         return response()->json($recommendation);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
+    // DELETE /api/recommendations/{id}
     public function destroy(string $id)
     {
-        //
+        $recommendation = Recommendation::where('user_id', Auth::id())->findOrFail($id);
+        $recommendation->delete();
+
+        return response()->json(['message' => 'Deleted', 'id' => $id]);
     }
 }
