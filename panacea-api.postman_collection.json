@@ -1,0 +1,411 @@
+{
+  "info": {
+    "name": "Panacea API",
+    "_postman_id": "panacea-diploma-2026",
+    "description": "Panacea API — AI chat (with SSE streaming, regenerate, edit/delete messages, search, pagination) + AI-generated medical anamneses + role/permission system.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "chat_id", "value": "", "type": "string" },
+    { "key": "message_id", "value": "", "type": "string" },
+    { "key": "anamnesis_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "  console.log('Token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nikita Test\",\n  \"email\": \"nikita@test.com\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\",\n  \"age\": 22,\n  \"sex\": \"male\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/register", "host": ["{{base_url}}"], "path": ["register"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nikita@test.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "Login as Admin (seeded)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@panacea.local\",\n  \"password\": \"adminpass\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/user", "host": ["{{base_url}}"], "path": ["user"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/logout", "host": ["{{base_url}}"], "path": ["logout"] }
+          }
+        },
+        {
+          "name": "List Tokens",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/tokens", "host": ["{{base_url}}"], "path": ["tokens"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "List Chats (search + paginate)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/chats?per_page=20&q=",
+              "host": ["{{base_url}}"],
+              "path": ["chats"],
+              "query": [
+                { "key": "per_page", "value": "20" },
+                { "key": "q", "value": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Chat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('chat_id', pm.response.json().id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My AI Consultation\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/chats", "host": ["{{base_url}}"], "path": ["chats"] }
+          }
+        },
+        {
+          "name": "Get Chat (paginated messages)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/chats/{{chat_id}}?per_page=50",
+              "host": ["{{base_url}}"],
+              "path": ["chats", "{{chat_id}}"],
+              "query": [{ "key": "per_page", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Send Message (sync)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 && pm.response.json().user_message) {",
+                  "  pm.collectionVariables.set('message_id', pm.response.json().user_message.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I have a headache for three days and mild nausea. What should I consider?\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/messages", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "messages"] }
+          }
+        },
+        {
+          "name": "Send Message (SSE stream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Tell me more about headache causes.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/messages/stream", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "messages", "stream"] },
+            "description": "Server-Sent Events. Response arrives as a stream of `event: delta` lines with `data: {\"text\":\"...\"}`, then a `final` event, then `saved` with the persisted assistant_message_id. Test via `curl -N` for live streaming; Postman may buffer."
+          }
+        },
+        {
+          "name": "Regenerate Last Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/regenerate", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "regenerate"] }
+          }
+        },
+        {
+          "name": "Edit User Message (regenerate from here)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Updated: I have had a headache for five days, plus fever.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/messages/{{message_id}}", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "messages", "{{message_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/messages/{{message_id}}", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "messages", "{{message_id}}"] }
+          }
+        },
+        {
+          "name": "Update Chat Title",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Headache Consultation\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Chat",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anamneses",
+      "item": [
+        {
+          "name": "Generate From Chat (AI)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('anamnesis_id', pm.response.json().anamnesis.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/chats/{{chat_id}}/anamnesis", "host": ["{{base_url}}"], "path": ["chats", "{{chat_id}}", "anamnesis"] }
+          }
+        },
+        {
+          "name": "List Anamneses",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/anamneses?per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["anamneses"],
+              "query": [{ "key": "per_page", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Get Anamnesis",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/anamneses/{{anamnesis_id}}", "host": ["{{base_url}}"], "path": ["anamneses", "{{anamnesis_id}}"] }
+          }
+        },
+        {
+          "name": "Update Anamnesis (manual edit)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chief_complaint\": \"Headache with photophobia, 5 days\",\n  \"allergies\": \"No known drug allergies\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/anamneses/{{anamnesis_id}}", "host": ["{{base_url}}"], "path": ["anamneses", "{{anamnesis_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Anamnesis",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/anamneses/{{anamnesis_id}}", "host": ["{{base_url}}"], "path": ["anamneses", "{{anamnesis_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+      }
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Anamnesis;
+use App\Models\Chat;
+use App\Models\ChatMessage;
+use App\Services\AIService;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+
+class AnamnesisController extends Controller
+{
+    private const FIELDS = [
+        'chief_complaint',
+        'history_present_illness',
+        'past_medical_history',
+        'family_history',
+        'social_history',
+        'allergies',
+        'medications',
+        'review_of_systems',
+    ];
+
+    public function __construct(private AIService $ai)
+    {
+    }
+
+    // GET /api/anamneses
+    public function index(Request $request)
+    {
+        $perPage = (int) $request->query('per_page', 20);
+
+        $paginated = Anamnesis::where('user_id', Auth::id())
+            ->with('chat:id,title')
+            ->orderBy('generated_at', 'desc')
+            ->paginate($perPage);
+
+        return response()->json($paginated);
+    }
+
+    // GET /api/anamneses/{id}
+    public function show(string $id)
+    {
+        $anamnesis = Anamnesis::where('user_id', Auth::id())
+            ->with('chat:id,title')
+            ->findOrFail($id);
+
+        return response()->json($anamnesis);
+    }
+
+    // PATCH /api/anamneses/{id}
+    public function update(Request $request, string $id)
+    {
+        $anamnesis = Anamnesis::where('user_id', Auth::id())->findOrFail($id);
+
+        $rules = [];
+        foreach (self::FIELDS as $field) {
+            $rules[$field] = 'sometimes|nullable|string';
+        }
+        $validated = $request->validate($rules);
+
+        $anamnesis->update($validated);
+
+        return response()->json($anamnesis->fresh());
+    }
+
+    // DELETE /api/anamneses/{id}
+    public function destroy(string $id)
+    {
+        $anamnesis = Anamnesis::where('user_id', Auth::id())->findOrFail($id);
+        $anamnesis->delete();
+
+        return response()->json(['message' => 'Anamnesis deleted', 'id' => $id]);
+    }
+
+    // POST /api/chats/{chatId}/anamnesis
+    public function generateFromChat(Request $request, string $chatId)
+    {
+        $chat = Chat::where('user_id', Auth::id())->findOrFail($chatId);
+
+        $request->validate(['locale' => 'nullable|string|max:10']);
+        $locale = $request->input('locale')
+            ?: (explode(',', (string) $request->header('Accept-Language'))[0] ?: 'en');
+
+        $messages = ChatMessage::where('chat_id', $chat->id)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        if ($messages->isEmpty()) {
+            return response()->json(['error' => 'Chat has no messages to summarize'], 422);
+        }
+
+        $history = $messages->map(fn($m) => [
+            'role' => $m->role,
+            'content' => $m->message,
+        ])->values()->all();
+
+        $prompt = $this->buildAnamnesisPrompt();
+
+        try {
+            $aiResponse = $this->ai->chat($prompt, $history, $chat->user, $locale);
+            $answer = $aiResponse['answer'] ?? '';
+            $parsed = $this->parseJson($answer);
+
+            $fields = [];
+            foreach (self::FIELDS as $field) {
+                $fields[$field] = $parsed[$field] ?? null;
+            }
+
+            $anamnesis = Anamnesis::create(array_merge($fields, [
+                'user_id' => Auth::id(),
+                'chat_id' => $chat->id,
+                'ai_raw_response' => [
+                    'answer' => $answer,
+                    'meta' => array_intersect_key($aiResponse, array_flip(['rag_used', 'intent', 'disclaimer'])),
+                ],
+                'generated_at' => now(),
+            ]));
+
+            return response()->json([
+                'anamnesis' => $anamnesis,
+                'parsed_successfully' => $parsed !== null,
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('Anamnesis generation failed: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to generate anamnesis', 'detail' => $e->getMessage()], 500);
+        }
+    }
+
+    private function buildAnamnesisPrompt(): string
+    {
+        $fields = implode(', ', self::FIELDS);
+
+        return "Based on our conversation so far, produce a structured medical anamnesis. "
+            . "Output ONLY a valid JSON object (no prose, no markdown, no code fences) with exactly these keys: "
+            . $fields . ". "
+            . "Each value must be a concise string summarizing what the patient said in that category, or null if not mentioned. "
+            . "Do not invent details. Example output: "
+            . '{"chief_complaint":"headache for 3 days","history_present_illness":"...","past_medical_history":null,'
+            . '"family_history":null,"social_history":null,"allergies":null,"medications":null,"review_of_systems":null}';
+    }
+
+    private function parseJson(string $text): ?array
+    {
+        $text = trim($text);
+        $decoded = json_decode($text, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        $stripped = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $text);
+        $stripped = trim($stripped);
+        $decoded = json_decode($stripped, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        if (preg_match('/\{[\s\S]*\}/', $text, $matches)) {
+            $decoded = json_decode($matches[0], true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+}
