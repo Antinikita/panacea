@@ -9,6 +9,7 @@ use App\Http\Controllers\AnamnesisController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/google', [AuthController::class, 'googleLogin']);
 
 Route::get('/health', fn() => response()->json(['status' => 'ok']));
 

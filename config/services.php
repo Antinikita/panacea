@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'google' => [
+        // Web OAuth client ID. Must match the `serverClientId` the mobile client
+        // passes to GoogleIdOption — otherwise verifyIdToken() will reject the token.
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
 ];

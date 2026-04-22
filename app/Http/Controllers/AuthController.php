@@ -5,6 +5,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -42,6 +44,73 @@ class AuthController extends Controller
             'token_type' => 'Bearer',
             'expires_in' => config('sanctum.expiration') * 60, // Convert to seconds
         ], 201);
+    }
+
+    /**
+     * Sign in / sign up a user with a Google ID token (issued by the mobile
+     * client's Credential Manager). Verifies the token server-side against the
+     * Google client ID and issues a Sanctum token so the mobile app can call
+     * the same protected endpoints as email/password users.
+     */
+    public function googleLogin(Request $request)
+    {
+        $validated = $request->validate([
+            'id_token' => 'required|string',
+        ]);
+
+        $clientId = config('services.google.client_id');
+        if (blank($clientId)) {
+            Log::error('googleLogin: GOOGLE_CLIENT_ID is not configured');
+            return response()->json([
+                'errors' => ['id_token' => ['Google auth is not configured on the server.']],
+            ], 500);
+        }
+
+        try {
+            $client = new \Google_Client(['client_id' => $clientId]);
+            $payload = $client->verifyIdToken($validated['id_token']);
+        } catch (\Throwable $e) {
+            Log::error('googleLogin: verifyIdToken threw: ' . $e->getMessage());
+            return response()->json([
+                'errors' => ['id_token' => ['Unable to verify Google token.']],
+            ], 422);
+        }
+
+        if (!$payload || empty($payload['email'])) {
+            return response()->json([
+                'errors' => ['id_token' => ['Invalid Google ID token.']],
+            ], 422);
+        }
+
+        $email = $payload['email'];
+        $name = $payload['name'] ?? $payload['given_name'] ?? Str::before($email, '@');
+
+        $user = User::firstOrCreate(
+            ['email' => $email],
+            [
+                'name'              => $name,
+                // Random placeholder — Google users never sign in with this password.
+                'password'          => Hash::make(Str::random(40)),
+                'sex'               => 'male',
+                'age'               => 30,
+                'email_verified_at' => now(),
+            ],
+        );
+
+        if ($user->wasRecentlyCreated) {
+            $user->assignRole('user');
+        }
+
+        $token = $user->createToken('google-mobile')->plainTextToken;
+
+        return response()->json([
+            'user'        => $user->load('roles', 'permissions'),
+            'roles'       => $user->getRoleNames(),
+            'permissions' => $user->getAllPermissions()->pluck('name'),
+            'token'       => $token,
+            'token_type'  => 'Bearer',
+            'expires_in'  => 525600 * 60,
+        ], $user->wasRecentlyCreated ? 201 : 200);
     }
 
     /**
