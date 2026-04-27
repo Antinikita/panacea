@@ -10,10 +10,13 @@ class RecommendationController extends Controller
     // GET /api/recommendations — all recommendations for current user
     public function index()
     {
+        $perPage = max(1, min(100, (int) request()->integer('per_page', 20)));
+
         $recommendations = Recommendation::where('user_id', Auth::id())
             ->with('complaint') // useful to show which complaint it belongs to
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->paginate($perPage);
+
 
         return response()->json($recommendations);
     }

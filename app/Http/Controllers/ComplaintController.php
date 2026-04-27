@@ -10,12 +10,19 @@ class ComplaintController extends Controller
 {
     public function index()
     {
+
+        $perPage = max(1, min(100, (int) request()->integer('per_page', 20)));
+
         $complaints = Complaint::where('user_id', Auth::id())
             ->with('latestRecommendation')
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->paginate($perPage);
 
-        return response()->json($complaints); // no need to return user here, frontend already has it
+        return response()->json([
+            'user' => Auth::user(),
+            'complaints' => $complaints,
+        ]);
+
     }
 
     public function store(Request $request)

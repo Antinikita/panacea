@@ -4,13 +4,12 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-        'http://localhost:5174',
-        'http://127.0.0.1:5174',
-        'https://steeply-unremunerated-margarito.ngrok-free.dev', // fix: .app not .dev
-    ],
+
+    'allowed_origins' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('FRONTEND_URL', 'http://localhost:5173'))
+    ))),
+
 
     'allowed_origins_patterns' => [],
 

@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
@@ -14,11 +15,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', fn(Request $r) => $r->user());
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // ⚠️ analyze MUST be before apiResource
+    // Маршрут analyze должен идти ПЕРЕД apiResource, чтобы не конфликтовать с /complaints/{id}
     Route::post('/complaints/analyze', [ComplaintAIController::class, 'analyze']);
+    
     Route::apiResource('complaints', ComplaintController::class);
     Route::apiResource('recommendations', RecommendationController::class);
-
-    
 });
-
