@@ -83,6 +83,37 @@ it('rolls back the user message when the AI call fails', function () {
     expect(ChatMessage::where('chat_id', $chat->id)->count())->toBe(0);
 });
 
+it('replays the cached response when the same Idempotency-Key is used twice', function () {
+    $this->mock(AIService::class, function ($mock) {
+        $mock->shouldReceive('chat')
+            ->once()
+            ->andReturn(['answer' => 'first reply']);
+    });
+
+    $chat = Chat::create(['user_id' => $this->user->id, 'title' => null]);
+    $key = 'a1b2c3d4-e5f6-7890-abcd-ef0123456789';
+
+    $first = $this->withHeader('Idempotency-Key', $key)
+        ->postJson("/api/chats/{$chat->id}/messages", ['message' => 'hi']);
+
+    $second = $this->withHeader('Idempotency-Key', $key)
+        ->postJson("/api/chats/{$chat->id}/messages", ['message' => 'hi']);
+
+    $first->assertCreated();
+    $second->assertCreated()->assertHeader('Idempotent-Replay', 'true');
+
+    expect($first->json('assistant_message.id'))->toBe($second->json('assistant_message.id'))
+        ->and(ChatMessage::where('chat_id', $chat->id)->count())->toBe(2);
+});
+
+it('rejects a non-UUID Idempotency-Key with 400', function () {
+    $chat = Chat::create(['user_id' => $this->user->id, 'title' => null]);
+
+    $this->withHeader('Idempotency-Key', 'not-a-uuid')
+        ->postJson("/api/chats/{$chat->id}/messages", ['message' => 'hi'])
+        ->assertStatus(400);
+});
+
 it("does not allow a user to read another user's chat", function () {
     $other = User::create([
         'name' => 'Mallory',

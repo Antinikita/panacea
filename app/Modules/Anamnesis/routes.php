@@ -9,5 +9,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/anamneses/{id}', [AnamnesisController::class, 'update'])->middleware('can:anamnesis.update');
     Route::put('/anamneses/{id}', [AnamnesisController::class, 'update'])->middleware('can:anamnesis.update');
     Route::delete('/anamneses/{id}', [AnamnesisController::class, 'destroy'])->middleware('can:anamnesis.delete');
-    Route::post('/chats/{chatId}/anamnesis', [AnamnesisController::class, 'generateFromChat'])->middleware('can:anamnesis.create');
+    Route::post('/chats/{chatId}/anamnesis', [AnamnesisController::class, 'generateFromChat'])->middleware(['can:anamnesis.create', 'idempotency']);
 });
