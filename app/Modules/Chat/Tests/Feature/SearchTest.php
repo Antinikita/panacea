@@ -93,16 +93,21 @@ it('semantic-searches via pgvector cosine distance', function () {
         'message' => 'My new shoes feel comfortable',
     ]);
 
-    // Populate embeddings deterministically using the mock Embedder.
-    $embedder = new Embedder;
-    foreach ([$headache, $shoes] as $msg) {
-        $vec = $embedder->embed($msg->message);
-        $literal = '['.implode(',', $vec).']';
-        DB::update('UPDATE chat_messages SET embedding = ?::vector WHERE id = ?', [$literal, $msg->id]);
-    }
+    // Inject deterministic vectors with real cosine distance: the query
+    // and the headache row share an axis; the shoes row is orthogonal.
+    // The mock Embedder's SHA256-derived vectors don't preserve meaning,
+    // so we can't rely on it to test ranking — that's a test concern,
+    // not a production one.
+    $queryVec = vectorOnAxis(0);
+    $headacheVec = vectorOnAxis(0, weight: 0.9);
+    $shoesVec = vectorOnAxis(1);
 
-    config(['app.env' => 'testing']);
-    putenv('AI_USE_MOCK=true');
+    DB::update('UPDATE chat_messages SET embedding = ?::vector WHERE id = ?', ['['.implode(',', $headacheVec).']', $headache->id]);
+    DB::update('UPDATE chat_messages SET embedding = ?::vector WHERE id = ?', ['['.implode(',', $shoesVec).']', $shoes->id]);
+
+    $this->mock(Embedder::class, function ($mock) use ($queryVec) {
+        $mock->shouldReceive('embed')->andReturn($queryVec);
+    });
 
     $response = $this->getJson('/api/search?q=splitting%20headache&mode=semantic&limit=1');
 
@@ -111,3 +116,16 @@ it('semantic-searches via pgvector cosine distance', function () {
         ->assertJsonPath('count', 1)
         ->assertJsonPath('results.0.message_id', $headache->id);
 });
+
+/**
+ * Builds a 1536-dim vector with a 1.0 along $axis and zeros elsewhere
+ * (or weight along the axis if specified). Used to construct rows with
+ * predictable cosine distance for ranking assertions.
+ */
+function vectorOnAxis(int $axis, float $weight = 1.0): array
+{
+    $vec = array_fill(0, 1536, 0.0);
+    $vec[$axis] = $weight;
+
+    return $vec;
+}
