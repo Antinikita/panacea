@@ -77,6 +77,21 @@ it('rejects login with the wrong password', function () {
     ])->assertStatus(422);
 });
 
+it('exposes a deep health probe that reports ai-service reachability', function () {
+    \Illuminate\Support\Facades\Http::fake([
+        '*' => \Illuminate\Support\Facades\Http::response(['ok' => true], 200),
+    ]);
+
+    config(['app.env' => 'testing']);
+    putenv('AI_MODULE_URL=http://stub.local');
+
+    $response = $this->getJson('/api/health/deep');
+
+    $response->assertOk()
+        ->assertJsonPath('laravel', 'ok')
+        ->assertJsonPath('ai_service.status', 'ok');
+});
+
 it('returns an X-Request-Id header on every response', function () {
     $response = $this->getJson('/api/health');
 
