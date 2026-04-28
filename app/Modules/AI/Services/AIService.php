@@ -4,6 +4,8 @@ namespace App\Modules\AI\Services;
 
 use App\Modules\Auth\Models\User;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -18,7 +20,7 @@ class AIService
     {
         $url = $this->baseUrl();
 
-        return str_ends_with($url, '/v1/chat') ? $url.'/stream' : $url.'/stream';
+        return str_ends_with($url, '/v1/chat') ? $url.'/stream' : $url.'/v1/chat/stream';
     }
 
     private function headers(User $user): array
@@ -74,17 +76,36 @@ class AIService
 
         Log::info('AIService::chat → POST', ['url' => $this->baseUrl(), 'user_id' => $user->id]);
 
-        $response = Http::timeout(300)
+        $start = microtime(true);
+
+        $response = Http::connectTimeout(10)
+            ->timeout(60)
+            ->retry(2, 500, function ($exception, $request) {
+                if ($exception instanceof ConnectionException) {
+                    return true;
+                }
+
+                return false;
+            }, throw: false)
             ->withHeaders($this->headers($user))
             ->post($this->baseUrl(), $payload);
+
+        $elapsedMs = (int) ((microtime(true) - $start) * 1000);
 
         if ($response->failed()) {
             Log::error('AIService::chat failed', [
                 'status' => $response->status(),
-                'body' => $response->body(),
+                'user_id' => $user->id,
+                'elapsed_ms' => $elapsedMs,
             ]);
             throw new \RuntimeException('AI service request failed: HTTP '.$response->status());
         }
+
+        Log::info('AIService::chat done', [
+            'status' => $response->status(),
+            'user_id' => $user->id,
+            'elapsed_ms' => $elapsedMs,
+        ]);
 
         $data = $response->json();
 
@@ -115,19 +136,42 @@ class AIService
         }
 
         $payload = $this->buildPayload($message, $history, $user, $locale);
-        $client = new Client(['timeout' => 300, 'stream' => true]);
+        $client = new Client(['connect_timeout' => 10, 'timeout' => 300, 'stream' => true]);
 
         Log::info('AIService::streamChat → POST', ['url' => $this->streamUrl(), 'user_id' => $user->id]);
 
-        $response = $client->post($this->streamUrl(), [
-            'headers' => $this->headers($user),
-            'json' => $payload,
-            'stream' => true,
-        ]);
+        $attempts = 0;
+        $maxAttempts = 2;
+        $response = null;
+
+        while ($attempts < $maxAttempts) {
+            $attempts++;
+            try {
+                $response = $client->post($this->streamUrl(), [
+                    'headers' => $this->headers($user),
+                    'json' => $payload,
+                    'stream' => true,
+                ]);
+                break;
+            } catch (ConnectException $e) {
+                if ($attempts >= $maxAttempts) {
+                    Log::error('AIService::streamChat connect failed', [
+                        'user_id' => $user->id,
+                        'attempts' => $attempts,
+                    ]);
+                    yield ['event' => 'error', 'data' => ['message' => 'Could not reach AI service']];
+
+                    return;
+                }
+                usleep(500_000);
+            }
+        }
 
         if ($response->getStatusCode() >= 400) {
-            $body = (string) $response->getBody();
-            Log::error('AIService::streamChat failed', ['status' => $response->getStatusCode(), 'body' => $body]);
+            Log::error('AIService::streamChat failed', [
+                'status' => $response->getStatusCode(),
+                'user_id' => $user->id,
+            ]);
             yield ['event' => 'error', 'data' => ['message' => 'Upstream error: '.$response->getStatusCode()]];
 
             return;
