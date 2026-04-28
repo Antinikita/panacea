@@ -65,11 +65,11 @@ it('returns the chat with paginated messages', function () {
         ->assertJsonPath('messages.data.1.message', 'hello');
 });
 
-it('rolls back the user message when the AI call fails', function () {
+it('rolls back the user message and returns a structured error when the AI call fails', function () {
     $this->mock(AIService::class, function ($mock) {
         $mock->shouldReceive('chat')
             ->once()
-            ->andThrow(new \RuntimeException('AI service unavailable'));
+            ->andThrow(new \RuntimeException('AI service unavailable: HTTP 502'));
     });
 
     $chat = Chat::create(['user_id' => $this->user->id, 'title' => null]);
@@ -78,9 +78,12 @@ it('rolls back the user message when the AI call fails', function () {
         'message' => 'I have a headache',
     ]);
 
-    $response->assertStatus(500);
+    $response->assertStatus(502)
+        ->assertJsonPath('error.code', 'AI_UPSTREAM_FAILED')
+        ->assertJsonMissingPath('error.detail');
 
-    expect(ChatMessage::where('chat_id', $chat->id)->count())->toBe(0);
+    expect($response->json('error.message'))->not->toContain('HTTP 502')
+        ->and(ChatMessage::where('chat_id', $chat->id)->count())->toBe(0);
 });
 
 it('replays the cached response when the same Idempotency-Key is used twice', function () {

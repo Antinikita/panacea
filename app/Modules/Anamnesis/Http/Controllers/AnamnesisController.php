@@ -118,9 +118,17 @@ class AnamnesisController extends Controller
                 'parsed_successfully' => $parsed !== null,
             ], 201);
         } catch (\Throwable $e) {
-            Log::error('Anamnesis generation failed: '.$e->getMessage());
+            Log::error('Anamnesis generation failed: '.$e->getMessage(), [
+                'chat_id' => $chat->id,
+                'user_id' => Auth::id(),
+            ]);
 
-            return response()->json(['error' => 'Failed to generate anamnesis', 'detail' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => [
+                    'code' => 'AI_UPSTREAM_FAILED',
+                    'message' => 'Failed to generate anamnesis',
+                ],
+            ], 502);
         }
     }
 

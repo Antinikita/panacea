@@ -137,9 +137,11 @@ class ChatController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate AI response',
-                'detail' => $e->getMessage(),
-            ], 500);
+                'error' => [
+                    'code' => 'AI_UPSTREAM_FAILED',
+                    'message' => 'Failed to generate AI response',
+                ],
+            ], 502);
         }
     }
 
@@ -289,9 +291,17 @@ class ChatController extends Controller
                 'assistant_message' => $this->formatMessage($assistantMessage),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Regenerate error: '.$e->getMessage());
+            Log::error('Regenerate error: '.$e->getMessage(), [
+                'chat_id' => $chat->id,
+                'user_id' => Auth::id(),
+            ]);
 
-            return response()->json(['error' => 'Failed to regenerate', 'detail' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => [
+                    'code' => 'AI_UPSTREAM_FAILED',
+                    'message' => 'Failed to regenerate AI response',
+                ],
+            ], 502);
         }
     }
 
@@ -340,12 +350,17 @@ class ChatController extends Controller
                 'assistant_message' => $this->formatMessage($assistantMessage),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Edit message error: '.$e->getMessage());
+            Log::error('Edit message error: '.$e->getMessage(), [
+                'chat_id' => $chat->id,
+                'user_id' => Auth::id(),
+            ]);
 
             return response()->json([
-                'error' => 'Failed to regenerate AI response',
-                'detail' => $e->getMessage(),
-            ], 500);
+                'error' => [
+                    'code' => 'AI_UPSTREAM_FAILED',
+                    'message' => 'Failed to regenerate AI response after edit',
+                ],
+            ], 502);
         }
     }
 
