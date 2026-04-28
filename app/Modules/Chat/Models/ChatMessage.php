@@ -13,6 +13,7 @@ class ChatMessage extends Model
         'chat_id',
         'role',
         'message',
+        'status',
         'metadata',
     ];
 

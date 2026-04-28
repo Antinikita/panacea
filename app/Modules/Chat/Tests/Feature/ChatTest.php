@@ -65,6 +65,24 @@ it('returns the chat with paginated messages', function () {
         ->assertJsonPath('messages.data.1.message', 'hello');
 });
 
+it('rolls back the user message when the AI call fails', function () {
+    $this->mock(AIService::class, function ($mock) {
+        $mock->shouldReceive('chat')
+            ->once()
+            ->andThrow(new \RuntimeException('AI service unavailable'));
+    });
+
+    $chat = Chat::create(['user_id' => $this->user->id, 'title' => null]);
+
+    $response = $this->postJson("/api/chats/{$chat->id}/messages", [
+        'message' => 'I have a headache',
+    ]);
+
+    $response->assertStatus(500);
+
+    expect(ChatMessage::where('chat_id', $chat->id)->count())->toBe(0);
+});
+
 it("does not allow a user to read another user's chat", function () {
     $other = User::create([
         'name' => 'Mallory',

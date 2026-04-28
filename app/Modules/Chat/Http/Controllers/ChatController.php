@@ -8,6 +8,7 @@ use App\Modules\Chat\Models\ChatMessage;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -96,31 +97,34 @@ class ChatController extends Controller
 
         $locale = $this->resolveLocale($request, $validated['locale'] ?? null);
 
-        $userMessage = ChatMessage::create([
-            'chat_id' => $chat->id,
-            'role' => 'user',
-            'message' => $validated['message'],
-        ]);
-
-        $this->autoTitle($chat, $validated['message']);
-
         try {
-            $history = $this->buildHistory($chat, exclude: $userMessage->id);
+            [$userMessage, $assistantMessage] = DB::transaction(function () use ($chat, $validated, $locale) {
+                $userMessage = ChatMessage::create([
+                    'chat_id' => $chat->id,
+                    'role' => 'user',
+                    'message' => $validated['message'],
+                ]);
 
-            $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
+                $this->autoTitle($chat, $validated['message']);
 
-            $assistantMessage = ChatMessage::create([
-                'chat_id' => $chat->id,
-                'role' => 'assistant',
-                'message' => $aiResponse['answer'] ?? 'Unable to generate response',
-                'metadata' => [
-                    'source' => 'ai_module',
-                    'rag_used' => $aiResponse['rag_used'] ?? null,
-                    'intent' => $aiResponse['intent'] ?? null,
-                ],
-            ]);
+                $history = $this->buildHistory($chat, exclude: $userMessage->id);
+                $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
 
-            $chat->touch();
+                $assistantMessage = ChatMessage::create([
+                    'chat_id' => $chat->id,
+                    'role' => 'assistant',
+                    'message' => $aiResponse['answer'] ?? 'Unable to generate response',
+                    'metadata' => [
+                        'source' => 'ai_module',
+                        'rag_used' => $aiResponse['rag_used'] ?? null,
+                        'intent' => $aiResponse['intent'] ?? null,
+                    ],
+                ]);
+
+                $chat->touch();
+
+                return [$userMessage, $assistantMessage];
+            });
 
             return response()->json([
                 'user_message' => $this->formatMessage($userMessage),
@@ -133,7 +137,6 @@ class ChatController extends Controller
             ]);
 
             return response()->json([
-                'user_message' => $this->formatMessage($userMessage),
                 'error' => 'Failed to generate AI response',
                 'detail' => $e->getMessage(),
             ], 500);
@@ -151,19 +154,35 @@ class ChatController extends Controller
 
         $locale = $this->resolveLocale($request, $validated['locale'] ?? null);
 
-        $userMessage = ChatMessage::create([
-            'chat_id' => $chat->id,
-            'role' => 'user',
-            'message' => $validated['message'],
-        ]);
+        // Pre-stream setup: create user msg + pending assistant placeholder.
+        // Wrapped in a transaction so a DB failure here doesn't leave half-state.
+        // Once we start flushing the SSE response we can no longer rollback,
+        // so the post-stream update path uses status='partial' on errors.
+        [$userMessage, $assistantMessage] = DB::transaction(function () use ($chat, $validated) {
+            $userMessage = ChatMessage::create([
+                'chat_id' => $chat->id,
+                'role' => 'user',
+                'message' => $validated['message'],
+            ]);
 
-        $this->autoTitle($chat, $validated['message']);
+            $this->autoTitle($chat, $validated['message']);
 
-        $history = $this->buildHistory($chat, exclude: $userMessage->id);
+            $assistantMessage = ChatMessage::create([
+                'chat_id' => $chat->id,
+                'role' => 'assistant',
+                'message' => '',
+                'status' => 'pending',
+                'metadata' => ['source' => 'ai_module_stream'],
+            ]);
+
+            return [$userMessage, $assistantMessage];
+        });
+
+        $history = $this->buildHistory($chat, exclude: [$userMessage->id, $assistantMessage->id]);
         $user = $chat->user;
         $ai = $this->ai;
 
-        return new StreamedResponse(function () use ($chat, $userMessage, $validated, $history, $user, $ai, $locale) {
+        return new StreamedResponse(function () use ($chat, $userMessage, $assistantMessage, $validated, $history, $user, $ai, $locale) {
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', '0');
             while (ob_get_level() > 0) {
@@ -180,9 +199,11 @@ class ChatController extends Controller
             $sendEvent('meta', [
                 'chat_id' => $chat->id,
                 'user_message_id' => $userMessage->id,
+                'assistant_message_id' => $assistantMessage->id,
             ]);
 
             $fullText = '';
+            $streamErrored = false;
             try {
                 foreach ($ai->streamChat($validated['message'], $history, $user, $locale) as $chunk) {
                     $sendEvent($chunk['event'], $chunk['data']);
@@ -193,23 +214,29 @@ class ChatController extends Controller
                     if ($chunk['event'] === 'final' && is_array($chunk['data']) && isset($chunk['data']['answer'])) {
                         $fullText = $chunk['data']['answer'];
                     }
+                    if ($chunk['event'] === 'error') {
+                        $streamErrored = true;
+                    }
                 }
             } catch (\Throwable $e) {
-                Log::error('streamMessage error: '.$e->getMessage());
-                $sendEvent('error', ['message' => $e->getMessage()]);
+                Log::error('streamMessage error: '.$e->getMessage(), [
+                    'chat_id' => $chat->id,
+                    'user_id' => $user->id,
+                ]);
+                $streamErrored = true;
+                $sendEvent('error', ['message' => 'Stream interrupted']);
             }
 
-            $assistantMessage = ChatMessage::create([
-                'chat_id' => $chat->id,
-                'role' => 'assistant',
+            $assistantMessage->update([
                 'message' => $fullText !== '' ? $fullText : 'Unable to generate response',
-                'metadata' => ['source' => 'ai_module_stream'],
+                'status' => $streamErrored ? 'partial' : 'complete',
             ]);
 
             $chat->touch();
 
             $sendEvent('saved', [
                 'assistant_message_id' => $assistantMessage->id,
+                'status' => $assistantMessage->status,
             ]);
         }, 200, [
             'Content-Type' => 'text/event-stream',
@@ -226,11 +253,6 @@ class ChatController extends Controller
         $request->validate(['locale' => 'nullable|string|max:10']);
         $locale = $this->resolveLocale($request, $request->input('locale'));
 
-        $lastAssistant = ChatMessage::where('chat_id', $chat->id)
-            ->where('role', 'assistant')
-            ->orderBy('created_at', 'desc')
-            ->first();
-
         $lastUser = ChatMessage::where('chat_id', $chat->id)
             ->where('role', 'user')
             ->orderBy('created_at', 'desc')
@@ -240,23 +262,28 @@ class ChatController extends Controller
             return response()->json(['error' => 'No user message to regenerate from'], 422);
         }
 
-        if ($lastAssistant) {
-            $lastAssistant->delete();
-        }
-
         try {
-            $history = $this->buildHistory($chat, exclude: $lastUser->id);
+            $assistantMessage = DB::transaction(function () use ($chat, $lastUser, $locale) {
+                ChatMessage::where('chat_id', $chat->id)
+                    ->where('role', 'assistant')
+                    ->orderBy('created_at', 'desc')
+                    ->limit(1)
+                    ->delete();
 
-            $aiResponse = $this->ai->chat($lastUser->message, $history, $chat->user, $locale);
+                $history = $this->buildHistory($chat, exclude: $lastUser->id);
+                $aiResponse = $this->ai->chat($lastUser->message, $history, $chat->user, $locale);
 
-            $assistantMessage = ChatMessage::create([
-                'chat_id' => $chat->id,
-                'role' => 'assistant',
-                'message' => $aiResponse['answer'] ?? 'Unable to generate response',
-                'metadata' => ['source' => 'ai_module', 'regenerated' => true],
-            ]);
+                $msg = ChatMessage::create([
+                    'chat_id' => $chat->id,
+                    'role' => 'assistant',
+                    'message' => $aiResponse['answer'] ?? 'Unable to generate response',
+                    'metadata' => ['source' => 'ai_module', 'regenerated' => true],
+                ]);
 
-            $chat->touch();
+                $chat->touch();
+
+                return $msg;
+            });
 
             return response()->json([
                 'assistant_message' => $this->formatMessage($assistantMessage),
@@ -285,25 +312,28 @@ class ChatController extends Controller
             return response()->json(['error' => 'Only user messages can be edited'], 422);
         }
 
-        $msg->update(['message' => $validated['message']]);
-
-        ChatMessage::where('chat_id', $chat->id)
-            ->where('created_at', '>', $msg->created_at)
-            ->delete();
-
         try {
-            $history = $this->buildHistory($chat, exclude: $msg->id);
+            [$msg, $assistantMessage] = DB::transaction(function () use ($chat, $msg, $validated, $locale) {
+                $msg->update(['message' => $validated['message']]);
 
-            $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
+                ChatMessage::where('chat_id', $chat->id)
+                    ->where('created_at', '>', $msg->created_at)
+                    ->delete();
 
-            $assistantMessage = ChatMessage::create([
-                'chat_id' => $chat->id,
-                'role' => 'assistant',
-                'message' => $aiResponse['answer'] ?? 'Unable to generate response',
-                'metadata' => ['source' => 'ai_module', 'edited' => true],
-            ]);
+                $history = $this->buildHistory($chat, exclude: $msg->id);
+                $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
 
-            $chat->touch();
+                $assistantMessage = ChatMessage::create([
+                    'chat_id' => $chat->id,
+                    'role' => 'assistant',
+                    'message' => $aiResponse['answer'] ?? 'Unable to generate response',
+                    'metadata' => ['source' => 'ai_module', 'edited' => true],
+                ]);
+
+                $chat->touch();
+
+                return [$msg, $assistantMessage];
+            });
 
             return response()->json([
                 'user_message' => $this->formatMessage($msg),
@@ -313,7 +343,6 @@ class ChatController extends Controller
             Log::error('Edit message error: '.$e->getMessage());
 
             return response()->json([
-                'user_message' => $this->formatMessage($msg),
                 'error' => 'Failed to regenerate AI response',
                 'detail' => $e->getMessage(),
             ], 500);
@@ -368,11 +397,14 @@ class ChatController extends Controller
         return 'en';
     }
 
-    private function buildHistory(Chat $chat, ?int $exclude = null): array
+    private function buildHistory(Chat $chat, int|array|null $exclude = null): array
     {
-        $query = ChatMessage::where('chat_id', $chat->id)->orderBy('created_at', 'asc');
+        $query = ChatMessage::where('chat_id', $chat->id)
+            ->where('status', '!=', 'pending')
+            ->orderBy('created_at', 'asc');
+
         if ($exclude !== null) {
-            $query->where('id', '!=', $exclude);
+            $query->whereNotIn('id', (array) $exclude);
         }
 
         return $query->get()->map(fn ($m) => [
