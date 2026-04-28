@@ -1,11 +1,14 @@
 <?php
 
+use App\Modules\AI\Services\AIService;
 use App\Modules\Anamnesis\Models\Anamnesis;
 use App\Modules\Auth\Models\User;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
-use App\Modules\AI\Services\AIService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+
+uses(Tests\TestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     seedPermissions();

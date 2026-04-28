@@ -5,9 +5,9 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
-pest()->extend(Tests\TestCase::class)
-    ->use(RefreshDatabase::class)
-    ->in('Feature');
+// Module-grouped tests live in app/Modules/<Name>/Tests/Feature and bind
+// Tests\TestCase + RefreshDatabase via uses() at the top of each file,
+// because Pest only auto-applies the extension to tests under tests/.
 
 expect()->extend('toBeOne', function () {
     return $this->toBe(1);

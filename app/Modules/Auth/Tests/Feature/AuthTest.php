@@ -1,7 +1,10 @@
 <?php
 
 use App\Modules\Auth\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+
+uses(Tests\TestCase::class, RefreshDatabase::class);
 
 beforeEach(fn () => seedPermissions());
 

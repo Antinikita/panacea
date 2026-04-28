@@ -157,7 +157,7 @@ Routes use `can:<permission>` middleware. Services additionally scope all reads 
 - **Pest** with `RefreshDatabase` against sqlite `:memory:` for unit + feature tests. Fast (~1s for the full suite).
 - **CI** (`.github/workflows/ci.yml`) runs Pest on every push and PR.
 - AI calls **always mocked** in tests via `$this->mock(AIService::class, ...)` — tests never hit ngrok.
-- Per-module tests live inside the module (`app/Modules/<Name>/Tests/Feature/...`) once Phase 1 lands. Until then, tests live in `tests/Feature/`.
+- Per-module tests live inside the module (`app/Modules/<Name>/Tests/Feature/...`). Each test file declares `uses(Tests\TestCase::class, RefreshDatabase::class)` because Pest only auto-applies its config to tests under `tests/`.
 - **Pint** code-style check is deliberately **off** in CI for Phase 0 — to be turned on in Phase 1 after a single mass-fix commit, so we don't pile cosmetic churn on top of the structural changes.
 
 ## Out of scope (won't build)
@@ -171,8 +171,8 @@ Routes use `can:<permission>` middleware. Services additionally scope all reads 
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 0 | Foundation: branch, Pest baseline, CI, this doc | ✅ Phase 0 in progress |
-| 1 | Modular monolith refactor (no behavior change) | pending |
+| 0 | Foundation: branch, Pest baseline, CI, this doc | ✅ done |
+| 1 | Modular monolith refactor (no behavior change) | ✅ done |
 | 2 | Hardening: transactions, idempotency, rate limits, structured errors, audit log, Sentry | pending |
 | 3 | Postgres++: pgvector + JSONB + tsvector + semantic search endpoint | pending |
 | 4 | Health metrics module (HealthKit ingestion + AI profile enrichment) | pending |
