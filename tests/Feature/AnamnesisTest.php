@@ -1,9 +1,9 @@
 <?php
 
-use App\Models\Anamnesis;
-use App\Models\Chat;
-use App\Models\ChatMessage;
-use App\Models\User;
+use App\Modules\Anamnesis\Models\Anamnesis;
+use App\Modules\Auth\Models\User;
+use App\Modules\Chat\Models\Chat;
+use App\Modules\Chat\Models\ChatMessage;
 use App\Services\AIService;
 use Laravel\Sanctum\Sanctum;
 

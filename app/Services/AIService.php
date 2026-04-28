@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\User;
+use App\Modules\Auth\Models\User;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;

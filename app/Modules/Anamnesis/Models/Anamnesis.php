@@ -1,7 +1,9 @@
 <?php
 
-namespace App\Models;
+namespace App\Modules\Anamnesis\Models;
 
+use App\Modules\Auth\Models\User;
+use App\Modules\Chat\Models\Chat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 

@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Chat;
-use App\Models\ChatMessage;
+use App\Modules\Chat\Models\Chat;
+use App\Modules\Chat\Models\ChatMessage;
 use App\Services\AIService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

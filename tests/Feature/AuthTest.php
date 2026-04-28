@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Auth\Models\User;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(fn () => seedPermissions());
