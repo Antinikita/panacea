@@ -14,9 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\RequestId::class,
         ]);
         $middleware->web(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\RequestId::class,
         ]);
         $middleware->alias([
             'idempotency' => \App\Http\Middleware\Idempotency::class,

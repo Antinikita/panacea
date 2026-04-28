@@ -77,6 +77,23 @@ it('rejects login with the wrong password', function () {
     ])->assertStatus(422);
 });
 
+it('returns an X-Request-Id header on every response', function () {
+    $response = $this->getJson('/api/health');
+
+    $response->assertOk();
+    expect($response->headers->get('X-Request-Id'))
+        ->toMatch('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i');
+});
+
+it('echoes a valid incoming X-Request-Id header back', function () {
+    $incoming = 'abcdef01-2345-6789-abcd-ef0123456789';
+
+    $response = $this->withHeader('X-Request-Id', $incoming)->getJson('/api/health');
+
+    $response->assertOk();
+    expect($response->headers->get('X-Request-Id'))->toBe($incoming);
+});
+
 it('records auth events in the activity log', function () {
     $user = User::create([
         'name' => 'Audit',
