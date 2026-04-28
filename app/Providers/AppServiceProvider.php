@@ -8,6 +8,7 @@ use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,5 +25,7 @@ class AppServiceProvider extends ServiceProvider
             'chat_message' => ChatMessage::class,
             'anamnesis' => Anamnesis::class,
         ]);
+
+        Password::defaults(fn () => Password::min(8)->letters()->numbers());
     }
 }

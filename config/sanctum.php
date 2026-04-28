@@ -4,7 +4,7 @@ return [
 
     'guard' => ['web'],
 
-    'expiration' => 525600, // tokens expire in 30 days (good practice)
+    'expiration' => 43200, // 30 days, in minutes
 
     'middleware' => [
         'web',

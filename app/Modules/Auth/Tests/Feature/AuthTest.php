@@ -35,6 +35,16 @@ it('rejects registration with mismatched password confirmation', function () {
     ])->assertStatus(422);
 });
 
+it('rejects registration when the password is too weak', function () {
+    $this->postJson('/api/register', [
+        'name' => 'Weakling',
+        'email' => 'weak@example.com',
+        'password' => 'short',
+        'password_confirmation' => 'short',
+    ])->assertStatus(422)
+        ->assertJsonValidationErrors(['password']);
+});
+
 it('logs in with valid credentials and returns a token', function () {
     $user = User::create([
         'name' => 'Carol',

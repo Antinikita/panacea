@@ -6,6 +6,7 @@ use App\Modules\Auth\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -16,7 +17,7 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'sex' => 'nullable|string',
             'age' => 'nullable|integer',
-            'password' => 'required|string|min:6|confirmed',
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ]);
 
         $user = User::create([
@@ -65,7 +66,7 @@ class AuthController extends Controller
             'permissions' => $user->getAllPermissions()->pluck('name'),
             'token' => $token,
             'token_type' => 'Bearer',
-            'expires_in' => 525600 * 60,
+            'expires_in' => config('sanctum.expiration') * 60,
         ]);
     }
 
