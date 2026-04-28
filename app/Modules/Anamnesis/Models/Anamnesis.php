@@ -6,10 +6,12 @@ use App\Modules\Auth\Models\User;
 use App\Modules\Chat\Models\Chat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Anamnesis extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $table = 'anamneses';
 
@@ -40,5 +42,13 @@ class Anamnesis extends Model
     public function chat()
     {
         return $this->belongsTo(Chat::class);
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 }

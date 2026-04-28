@@ -3,6 +3,7 @@
 use App\Modules\Auth\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Spatie\Activitylog\Models\Activity;
 
 uses(Tests\TestCase::class, RefreshDatabase::class);
 
@@ -74,6 +75,32 @@ it('rejects login with the wrong password', function () {
         'email' => 'dan@example.com',
         'password' => 'WRONG',
     ])->assertStatus(422);
+});
+
+it('records auth events in the activity log', function () {
+    $user = User::create([
+        'name' => 'Audit',
+        'email' => 'audit@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    $this->postJson('/api/login', [
+        'email' => 'audit@example.com',
+        'password' => 'WRONG',
+    ])->assertStatus(422);
+
+    $this->postJson('/api/login', [
+        'email' => 'audit@example.com',
+        'password' => 'secret123',
+    ])->assertOk();
+
+    $events = Activity::where('log_name', 'auth')
+        ->orderBy('id')
+        ->pluck('event')
+        ->all();
+
+    expect($events)->toContain('login_failed', 'login_success');
 });
 
 it('throttles /login after 5 attempts per IP', function () {

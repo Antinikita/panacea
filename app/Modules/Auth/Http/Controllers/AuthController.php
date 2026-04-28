@@ -32,6 +32,12 @@ class AuthController extends Controller
 
         $token = $user->createToken('api-token')->plainTextToken;
 
+        activity('auth')
+            ->causedBy($user)
+            ->withProperties(['ip' => $request->ip(), 'user_agent' => $request->userAgent()])
+            ->event('register')
+            ->log('register');
+
         return response()->json([
             'message' => 'User registered successfully',
             'user' => $user->load('roles', 'permissions'),
@@ -53,12 +59,28 @@ class AuthController extends Controller
         $user = User::where('email', $credentials['email'])->first();
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            activity('auth')
+                ->causedBy($user)
+                ->withProperties([
+                    'email' => $credentials['email'],
+                    'ip' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                ])
+                ->event('login_failed')
+                ->log('login_failed');
+
             return response()->json([
                 'errors' => ['email' => ['The provided credentials do not match our records.']],
             ], 422);
         }
 
         $token = $user->createToken('api-token')->plainTextToken;
+
+        activity('auth')
+            ->causedBy($user)
+            ->withProperties(['ip' => $request->ip(), 'user_agent' => $request->userAgent()])
+            ->event('login_success')
+            ->log('login_success');
 
         return response()->json([
             'user' => $user,
@@ -84,7 +106,14 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
-            $request->user()->currentAccessToken()->delete();
+            $user = $request->user();
+            $user->currentAccessToken()->delete();
+
+            activity('auth')
+                ->causedBy($user)
+                ->withProperties(['ip' => $request->ip()])
+                ->event('logout')
+                ->log('logout');
 
             return response()->json(['message' => 'Logged out successfully'], 200);
         } catch (\Exception $e) {

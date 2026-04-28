@@ -6,10 +6,12 @@ use App\Modules\Anamnesis\Models\Anamnesis;
 use App\Modules\Auth\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Chat extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $fillable = [
         'user_id',
@@ -34,5 +36,13 @@ class Chat extends Model
     public function getRouteKeyName()
     {
         return 'id';
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['title', 'user_id'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 }
