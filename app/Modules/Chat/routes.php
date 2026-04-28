@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Chat\Http\Controllers\ChatController;
+use App\Modules\Chat\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -12,6 +13,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/chats/{id}', [ChatController::class, 'update'])->middleware('can:chat.update');
         Route::delete('/chats/{id}', [ChatController::class, 'destroy'])->middleware('can:chat.delete');
         Route::delete('/chats/{id}/messages/{messageId}', [ChatController::class, 'deleteMessage'])->middleware('can:chat.delete');
+
+        Route::get('/search', SearchController::class)->middleware('can:chat.read');
     });
 
     Route::middleware('throttle:ai-write')->group(function () {

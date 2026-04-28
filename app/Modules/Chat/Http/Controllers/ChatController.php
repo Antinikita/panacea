@@ -3,6 +3,8 @@
 namespace App\Modules\Chat\Http\Controllers;
 
 use App\Modules\AI\Services\AIService;
+use App\Modules\Chat\Events\AssistantReplyCreated;
+use App\Modules\Chat\Events\MessageSent;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
 use Illuminate\Http\Request;
@@ -126,6 +128,9 @@ class ChatController extends Controller
                 return [$userMessage, $assistantMessage];
             });
 
+            MessageSent::dispatch($userMessage);
+            AssistantReplyCreated::dispatch($assistantMessage);
+
             return response()->json([
                 'user_message' => $this->formatMessage($userMessage),
                 'assistant_message' => $this->formatMessage($assistantMessage),
@@ -236,6 +241,11 @@ class ChatController extends Controller
 
             $chat->touch();
 
+            if (!$streamErrored) {
+                MessageSent::dispatch($userMessage);
+                AssistantReplyCreated::dispatch($assistantMessage);
+            }
+
             $sendEvent('saved', [
                 'assistant_message_id' => $assistantMessage->id,
                 'status' => $assistantMessage->status,
@@ -286,6 +296,8 @@ class ChatController extends Controller
 
                 return $msg;
             });
+
+            AssistantReplyCreated::dispatch($assistantMessage);
 
             return response()->json([
                 'assistant_message' => $this->formatMessage($assistantMessage),
@@ -344,6 +356,9 @@ class ChatController extends Controller
 
                 return [$msg, $assistantMessage];
             });
+
+            MessageSent::dispatch($msg);
+            AssistantReplyCreated::dispatch($assistantMessage);
 
             return response()->json([
                 'user_message' => $this->formatMessage($msg),
