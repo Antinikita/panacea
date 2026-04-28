@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Modules\AI\Services;
 
 use App\Modules\Auth\Models\User;
 use GuzzleHttp\Client;
@@ -17,7 +17,8 @@ class AIService
     private function streamUrl(): string
     {
         $url = $this->baseUrl();
-        return str_ends_with($url, '/v1/chat') ? $url . '/stream' : $url . '/stream';
+
+        return str_ends_with($url, '/v1/chat') ? $url.'/stream' : $url.'/stream';
     }
 
     private function headers(User $user): array
@@ -32,11 +33,14 @@ class AIService
 
     private function normalizeLocale(?string $locale): string
     {
-        if (!$locale) return 'en';
+        if (!$locale) {
+            return 'en';
+        }
         $l = strtolower(substr(trim($locale), 0, 5));
         $l = str_replace('_', '-', $l);
         $primary = explode('-', $l)[0];
         $allowed = ['en', 'ru', 'kk'];
+
         return in_array($primary, $allowed, true) ? $primary : 'en';
     }
 
@@ -79,7 +83,7 @@ class AIService
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
-            throw new \RuntimeException('AI service request failed: HTTP ' . $response->status());
+            throw new \RuntimeException('AI service request failed: HTTP '.$response->status());
         }
 
         $data = $response->json();
@@ -102,10 +106,11 @@ class AIService
         if (env('AI_USE_MOCK', false)) {
             $full = "(mock stream, locale={$locale}) This is a streamed mock response arriving token by token.";
             foreach (explode(' ', $full) as $word) {
-                yield ['event' => 'delta', 'data' => ['text' => $word . ' ']];
+                yield ['event' => 'delta', 'data' => ['text' => $word.' ']];
                 usleep(50000);
             }
             yield ['event' => 'final', 'data' => ['answer' => $full]];
+
             return;
         }
 
@@ -123,7 +128,8 @@ class AIService
         if ($response->getStatusCode() >= 400) {
             $body = (string) $response->getBody();
             Log::error('AIService::streamChat failed', ['status' => $response->getStatusCode(), 'body' => $body]);
-            yield ['event' => 'error', 'data' => ['message' => 'Upstream error: ' . $response->getStatusCode()]];
+            yield ['event' => 'error', 'data' => ['message' => 'Upstream error: '.$response->getStatusCode()]];
+
             return;
         }
 
@@ -149,6 +155,7 @@ class AIService
 
                 if (str_starts_with($line, 'event:')) {
                     $currentEvent = trim(substr($line, 6));
+
                     continue;
                 }
 

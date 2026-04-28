@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Modules\Chat\Http\Controllers;
 
+use App\Modules\AI\Services\AIService;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
-use App\Services\AIService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -13,30 +13,27 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatController extends Controller
 {
-    public function __construct(private AIService $ai)
-    {
-    }
+    public function __construct(private AIService $ai) {}
 
-    // GET /api/chats?q=&page=&per_page=
     public function index(Request $request)
     {
         $perPage = (int) $request->query('per_page', 20);
         $q = $request->query('q');
 
         $query = Chat::where('user_id', Auth::id())
-            ->with(['messages' => fn($m) => $m->latest()->limit(1)])
+            ->with(['messages' => fn ($m) => $m->latest()->limit(1)])
             ->orderBy('updated_at', 'desc');
 
         if ($q) {
             $query->where(function ($w) use ($q) {
                 $w->where('title', 'like', "%{$q}%")
-                  ->orWhereHas('messages', fn($m) => $m->where('message', 'like', "%{$q}%"));
+                    ->orWhereHas('messages', fn ($m) => $m->where('message', 'like', "%{$q}%"));
             });
         }
 
         $paginated = $query->paginate($perPage);
 
-        $paginated->getCollection()->transform(fn($chat) => [
+        $paginated->getCollection()->transform(fn ($chat) => [
             'id' => $chat->id,
             'title' => $chat->title ?? 'Untitled Chat',
             'last_message' => $chat->messages->first()?->message,
@@ -47,7 +44,6 @@ class ChatController extends Controller
         return response()->json($paginated);
     }
 
-    // POST /api/chats
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -66,7 +62,6 @@ class ChatController extends Controller
         ], 201);
     }
 
-    // GET /api/chats/{id}?page=&per_page=
     public function show(Request $request, string $id)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -74,7 +69,7 @@ class ChatController extends Controller
 
         $messages = $chat->messages()->orderBy('created_at', 'asc')->paginate($perPage);
 
-        $messages->getCollection()->transform(fn($msg) => [
+        $messages->getCollection()->transform(fn ($msg) => [
             'id' => $msg->id,
             'role' => $msg->role,
             'message' => $msg->message,
@@ -90,7 +85,6 @@ class ChatController extends Controller
         ]);
     }
 
-    // POST /api/chats/{id}/messages
     public function sendMessage(Request $request, string $id)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -133,7 +127,7 @@ class ChatController extends Controller
                 'assistant_message' => $this->formatMessage($assistantMessage),
             ], 201);
         } catch (\Throwable $e) {
-            Log::error('Chat AI Error: ' . $e->getMessage(), [
+            Log::error('Chat AI Error: '.$e->getMessage(), [
                 'chat_id' => $chat->id,
                 'user_id' => Auth::id(),
             ]);
@@ -146,7 +140,6 @@ class ChatController extends Controller
         }
     }
 
-    // POST /api/chats/{id}/messages/stream
     public function streamMessage(Request $request, string $id): StreamedResponse
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -179,7 +172,7 @@ class ChatController extends Controller
 
             $sendEvent = function (string $event, $data) {
                 echo "event: {$event}\n";
-                echo 'data: ' . (is_string($data) ? $data : json_encode($data)) . "\n\n";
+                echo 'data: '.(is_string($data) ? $data : json_encode($data))."\n\n";
                 @ob_flush();
                 @flush();
             };
@@ -202,7 +195,7 @@ class ChatController extends Controller
                     }
                 }
             } catch (\Throwable $e) {
-                Log::error('streamMessage error: ' . $e->getMessage());
+                Log::error('streamMessage error: '.$e->getMessage());
                 $sendEvent('error', ['message' => $e->getMessage()]);
             }
 
@@ -226,7 +219,6 @@ class ChatController extends Controller
         ]);
     }
 
-    // POST /api/chats/{id}/regenerate
     public function regenerate(Request $request, string $id)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -270,12 +262,12 @@ class ChatController extends Controller
                 'assistant_message' => $this->formatMessage($assistantMessage),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Regenerate error: ' . $e->getMessage());
+            Log::error('Regenerate error: '.$e->getMessage());
+
             return response()->json(['error' => 'Failed to regenerate', 'detail' => $e->getMessage()], 500);
         }
     }
 
-    // PATCH /api/chats/{id}/messages/{messageId}
     public function updateMessage(Request $request, string $id, string $messageId)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -318,7 +310,8 @@ class ChatController extends Controller
                 'assistant_message' => $this->formatMessage($assistantMessage),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Edit message error: ' . $e->getMessage());
+            Log::error('Edit message error: '.$e->getMessage());
+
             return response()->json([
                 'user_message' => $this->formatMessage($msg),
                 'error' => 'Failed to regenerate AI response',
@@ -327,7 +320,6 @@ class ChatController extends Controller
         }
     }
 
-    // DELETE /api/chats/{id}/messages/{messageId}
     public function deleteMessage(string $id, string $messageId)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -338,7 +330,6 @@ class ChatController extends Controller
         return response()->json(['message' => 'Message deleted', 'id' => $messageId]);
     }
 
-    // PUT /api/chats/{id}
     public function update(Request $request, string $id)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -356,7 +347,6 @@ class ChatController extends Controller
         ]);
     }
 
-    // DELETE /api/chats/{id}
     public function destroy(string $id)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($id);
@@ -374,6 +364,7 @@ class ChatController extends Controller
         if ($header) {
             return explode(',', $header)[0];
         }
+
         return 'en';
     }
 
@@ -383,7 +374,8 @@ class ChatController extends Controller
         if ($exclude !== null) {
             $query->where('id', '!=', $exclude);
         }
-        return $query->get()->map(fn($m) => [
+
+        return $query->get()->map(fn ($m) => [
             'role' => $m->role,
             'content' => $m->message,
         ])->values()->all();

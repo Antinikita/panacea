@@ -3,7 +3,7 @@
 use App\Modules\Auth\Models\User;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
-use App\Services\AIService;
+use App\Modules\AI\Services\AIService;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {

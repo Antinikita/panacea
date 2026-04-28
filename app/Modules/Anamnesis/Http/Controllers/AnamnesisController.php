@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Modules\Anamnesis\Http\Controllers;
 
+use App\Modules\AI\Services\AIService;
 use App\Modules\Anamnesis\Models\Anamnesis;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
-use App\Services\AIService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -24,11 +24,8 @@ class AnamnesisController extends Controller
         'review_of_systems',
     ];
 
-    public function __construct(private AIService $ai)
-    {
-    }
+    public function __construct(private AIService $ai) {}
 
-    // GET /api/anamneses
     public function index(Request $request)
     {
         $perPage = (int) $request->query('per_page', 20);
@@ -41,7 +38,6 @@ class AnamnesisController extends Controller
         return response()->json($paginated);
     }
 
-    // GET /api/anamneses/{id}
     public function show(string $id)
     {
         $anamnesis = Anamnesis::where('user_id', Auth::id())
@@ -51,7 +47,6 @@ class AnamnesisController extends Controller
         return response()->json($anamnesis);
     }
 
-    // PATCH /api/anamneses/{id}
     public function update(Request $request, string $id)
     {
         $anamnesis = Anamnesis::where('user_id', Auth::id())->findOrFail($id);
@@ -67,7 +62,6 @@ class AnamnesisController extends Controller
         return response()->json($anamnesis->fresh());
     }
 
-    // DELETE /api/anamneses/{id}
     public function destroy(string $id)
     {
         $anamnesis = Anamnesis::where('user_id', Auth::id())->findOrFail($id);
@@ -76,7 +70,6 @@ class AnamnesisController extends Controller
         return response()->json(['message' => 'Anamnesis deleted', 'id' => $id]);
     }
 
-    // POST /api/chats/{chatId}/anamnesis
     public function generateFromChat(Request $request, string $chatId)
     {
         $chat = Chat::where('user_id', Auth::id())->findOrFail($chatId);
@@ -93,7 +86,7 @@ class AnamnesisController extends Controller
             return response()->json(['error' => 'Chat has no messages to summarize'], 422);
         }
 
-        $history = $messages->map(fn($m) => [
+        $history = $messages->map(fn ($m) => [
             'role' => $m->role,
             'content' => $m->message,
         ])->values()->all();
@@ -125,7 +118,8 @@ class AnamnesisController extends Controller
                 'parsed_successfully' => $parsed !== null,
             ], 201);
         } catch (\Throwable $e) {
-            Log::error('Anamnesis generation failed: ' . $e->getMessage());
+            Log::error('Anamnesis generation failed: '.$e->getMessage());
+
             return response()->json(['error' => 'Failed to generate anamnesis', 'detail' => $e->getMessage()], 500);
         }
     }
@@ -134,13 +128,13 @@ class AnamnesisController extends Controller
     {
         $fields = implode(', ', self::FIELDS);
 
-        return "Based on our conversation so far, produce a structured medical anamnesis. "
-            . "Output ONLY a valid JSON object (no prose, no markdown, no code fences) with exactly these keys: "
-            . $fields . ". "
-            . "Each value must be a concise string summarizing what the patient said in that category, or null if not mentioned. "
-            . "Do not invent details. Example output: "
-            . '{"chief_complaint":"headache for 3 days","history_present_illness":"...","past_medical_history":null,'
-            . '"family_history":null,"social_history":null,"allergies":null,"medications":null,"review_of_systems":null}';
+        return 'Based on our conversation so far, produce a structured medical anamnesis. '
+            .'Output ONLY a valid JSON object (no prose, no markdown, no code fences) with exactly these keys: '
+            .$fields.'. '
+            .'Each value must be a concise string summarizing what the patient said in that category, or null if not mentioned. '
+            .'Do not invent details. Example output: '
+            .'{"chief_complaint":"headache for 3 days","history_present_illness":"...","past_medical_history":null,'
+            .'"family_history":null,"social_history":null,"allergies":null,"medications":null,"review_of_systems":null}';
     }
 
     private function parseJson(string $text): ?array
