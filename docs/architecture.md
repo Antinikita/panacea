@@ -174,6 +174,7 @@ Routes use `can:<permission>` middleware. Services additionally scope all reads 
 | 0 | Foundation: branch, Pest baseline, CI, this doc | ✅ done |
 | 1 | Modular monolith refactor (no behavior change) | ✅ done |
 | 2 | Hardening: transactions, idempotency, rate limits, structured errors, audit log, RequestId | ✅ done (Sentry deferred to when DSN is provisioned) |
+| 3 | Postgres++: pgvector + JSONB + tsvector + semantic search endpoint | ✅ done (sqlite still works locally; Postgres in CI matrix; ai-service /v1/embed is mocked until teammate exposes it) |
 | 3 | Postgres++: pgvector + JSONB + tsvector + semantic search endpoint | pending |
 | 4 | Health metrics module (HealthKit ingestion + AI profile enrichment) | pending |
 | 5 | OpenAPI spec + client codegen for React + Swift | pending |
