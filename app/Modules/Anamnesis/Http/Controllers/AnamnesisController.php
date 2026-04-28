@@ -106,12 +106,16 @@ class AnamnesisController extends Controller
             $anamnesis = Anamnesis::create(array_merge($fields, [
                 'user_id' => Auth::id(),
                 'chat_id' => $chat->id,
-                'ai_raw_response' => [
-                    'answer' => $answer,
-                    'meta' => array_intersect_key($aiResponse, array_flip(['rag_used', 'intent', 'disclaimer'])),
-                ],
                 'generated_at' => now(),
             ]));
+
+            // ai_raw_response is set explicitly (not via mass assignment)
+            // so a malicious PATCH body can't inject arbitrary metadata.
+            $anamnesis->ai_raw_response = [
+                'answer' => $answer,
+                'meta' => array_intersect_key($aiResponse, array_flip(['rag_used', 'intent', 'disclaimer'])),
+            ];
+            $anamnesis->save();
 
             return response()->json([
                 'anamnesis' => $anamnesis,

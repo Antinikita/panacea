@@ -24,7 +24,6 @@ class Anamnesis extends Model
         'allergies',
         'medications',
         'review_of_systems',
-        'ai_raw_response',
         'generated_at',
     ];
 
