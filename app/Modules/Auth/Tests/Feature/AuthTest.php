@@ -76,6 +76,20 @@ it('rejects login with the wrong password', function () {
     ])->assertStatus(422);
 });
 
+it('throttles /login after 5 attempts per IP', function () {
+    for ($i = 0; $i < 5; $i++) {
+        $this->postJson('/api/login', [
+            'email' => "spammer{$i}@example.com",
+            'password' => 'whatever',
+        ]);
+    }
+
+    $this->postJson('/api/login', [
+        'email' => 'spammer-final@example.com',
+        'password' => 'whatever',
+    ])->assertStatus(429);
+});
+
 it('revokes the current token on logout', function () {
     $user = User::create([
         'name' => 'Eve',
