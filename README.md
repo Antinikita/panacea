@@ -1,61 +1,74 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Panacea API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel 12 backend for a three-tier medical consultation system. Owns user identity, chat history, anamneses, role/permission authorization, and the contract with a Python FastAPI ai-service. Consumed by a React SPA and a Swift iOS client (separate repos).
 
-## About Laravel
+- **Architecture overview:** [`docs/architecture.md`](docs/architecture.md)
+- **Generated OpenAPI 3.1 spec:** [`openapi.json`](openapi.json) — also live at `/docs/api` (Stoplight Elements)
+- **Client codegen workflow:** [`docs/clients-from-spec.md`](docs/clients-from-spec.md)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Stack
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- PHP 8.2, Laravel 12, Pest 3
+- **Postgres 16 + pgvector** (semantic + full-text + JSONB search on `chat_messages`)
+- Redis-optional (cache + queue currently DB-backed by default)
+- Sanctum bearer tokens, Spatie permissions, activitylog
+- `dedoc/scramble` for OpenAPI auto-discovery
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Local setup
 
-## Learning Laravel
+Postgres with pgvector is mandatory. Easiest path is the Docker image CI uses:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+```bash
+docker run -d --name panacea-pg \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=panacea \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+```
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+If you already have Postgres 15.x natively bound to 5432 (XAMPP / EnterpriseDB installer), publish the container on `5433` instead and override `DB_PORT=5433` in `.env`.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve
+```
 
-## Laravel Sponsors
+Seeded admin: `admin@panacea.local` / `adminpass`.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Tests
 
-### Premium Partners
+```bash
+php artisan test
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Tests run on sqlite `:memory:` by default for speed (the pgvector migration is a no-op there). The full Postgres path runs in CI on every push.
 
-## Contributing
+To run the suite against your local Postgres:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 \
+  DB_DATABASE=panacea_test DB_USERNAME=postgres DB_PASSWORD=postgres \
+  php artisan test
+```
 
-## Code of Conduct
+(Create `panacea_test` first: `docker exec panacea-pg psql -U postgres -c "CREATE DATABASE panacea_test;"`)
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## OpenAPI spec
 
-## Security Vulnerabilities
+The spec is committed at [`openapi.json`](openapi.json). Regenerate after touching a controller:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan scramble:export --path=openapi.json --silent
+```
+
+CI fails if the committed spec is out of sync with the controllers. See [`docs/clients-from-spec.md`](docs/clients-from-spec.md) for React + Swift codegen instructions.
+
+## ai-service
+
+The Python FastAPI service is owned by a teammate and reached over an ngrok tunnel set in `AI_MODULE_URL`. With `AI_USE_MOCK=true` (the default in `phpunit.xml`), all AI calls return deterministic mock responses, so tests and offline dev work without it.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT.
