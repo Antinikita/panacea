@@ -3,6 +3,7 @@
 namespace App\Modules\AI\Services;
 
 use App\Modules\Auth\Models\User;
+use App\Modules\Health\Services\HealthQueryService;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Http\Client\ConnectionException;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class AIService
 {
+    public function __construct(private HealthQueryService $healthQuery) {}
+
     private function baseUrl(): string
     {
         return rtrim(env('AI_MODULE_URL', 'http://localhost:8000/v1/chat'), '/');
@@ -48,6 +51,8 @@ class AIService
 
     private function buildPayload(string $message, array $history, User $user, string $locale): array
     {
+        $metrics = $this->healthQuery->recentSnapshot($user->id, 7);
+
         return [
             'message' => $message,
             'locale' => $locale,
@@ -56,7 +61,7 @@ class AIService
                 'age' => $user->age ?? 25,
                 'sex' => $user->sex ?? 'male',
                 'goals' => ['chat_assistance'],
-                'metrics' => (object) [],
+                'metrics' => $metrics === [] ? (object) [] : $metrics,
             ],
         ];
     }
