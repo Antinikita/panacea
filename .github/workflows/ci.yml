@@ -67,3 +67,13 @@ jobs:
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
         run: php artisan test
+
+      - name: OpenAPI spec drift check
+        if: matrix.db == 'sqlite'
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+        run: |
+          php artisan scramble:export --path=openapi.json --silent
+          git diff --exit-code openapi.json \
+            || (echo "::error::openapi.json is out of sync with the controllers. Regenerate locally: php artisan scramble:export --path=openapi.json --silent" && exit 1)
