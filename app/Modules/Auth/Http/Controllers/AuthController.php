@@ -103,6 +103,55 @@ class AuthController extends Controller
         ]);
     }
 
+    public function updateProfile(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'sex' => 'sometimes|nullable|string|in:male,female,other',
+            'age' => 'sometimes|nullable|integer|min:0|max:150',
+        ]);
+
+        $user = $request->user();
+        $user->fill($validated);
+        $user->save();
+
+        return response()->json([
+            'user' => $user->fresh(),
+            'roles' => $user->getRoleNames(),
+            'permissions' => $user->getAllPermissions()->pluck('name'),
+        ]);
+    }
+
+    public function updatePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+        ]);
+
+        $user = $request->user();
+        $currentTokenId = $user->currentAccessToken()?->id;
+
+        $user->password = $request->input('password');
+        $user->save();
+
+        // Revoke every other access token on password change so that
+        // sessions on other devices are forced back through login.
+        // The current token stays alive so the caller doesn't 401 on
+        // the next request.
+        $user->tokens()
+            ->when($currentTokenId, fn ($q) => $q->where('id', '!=', $currentTokenId))
+            ->delete();
+
+        activity('auth')
+            ->causedBy($user)
+            ->withProperties(['ip' => $request->ip(), 'user_agent' => $request->userAgent()])
+            ->event('password_changed')
+            ->log('password_changed');
+
+        return response()->json(['message' => 'Password updated']);
+    }
+
     public function logout(Request $request)
     {
         try {

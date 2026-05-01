@@ -161,3 +161,100 @@ it('revokes the current token on logout', function () {
 
     $this->postJson('/api/logout')->assertOk();
 });
+
+it('updates the authenticated user\'s profile fields', function () {
+    $user = User::create([
+        'name' => 'Old Name',
+        'email' => 'who@example.com',
+        'password' => 'secret123',
+        'sex' => 'male',
+        'age' => 30,
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $response = $this->patchJson('/api/user', [
+        'name' => 'New Name',
+        'sex' => 'female',
+        'age' => 35,
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('user.name', 'New Name')
+        ->assertJsonPath('user.sex', 'female')
+        ->assertJsonPath('user.age', 35);
+
+    expect($user->fresh()->name)->toBe('New Name');
+});
+
+it('rejects profile update with an invalid sex value', function () {
+    $user = User::create([
+        'name' => 'X',
+        'email' => 'x@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->patchJson('/api/user', ['sex' => 'whatever'])->assertStatus(422);
+});
+
+it('changes the password when the current one is correct', function () {
+    $user = User::create([
+        'name' => 'Pwd Changer',
+        'email' => 'pwd@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $response = $this->putJson('/api/user/password', [
+        'current_password' => 'oldsecret123',
+        'password' => 'newsecret456',
+        'password_confirmation' => 'newsecret456',
+    ]);
+
+    $response->assertOk();
+
+    expect(\Illuminate\Support\Facades\Hash::check('newsecret456', $user->fresh()->password))->toBeTrue();
+});
+
+it('rejects password change with the wrong current password', function () {
+    $user = User::create([
+        'name' => 'Pwd Failure',
+        'email' => 'pwdfail@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->putJson('/api/user/password', [
+        'current_password' => 'WRONG',
+        'password' => 'newsecret456',
+        'password_confirmation' => 'newsecret456',
+    ])->assertStatus(422);
+
+    // password unchanged
+    expect(\Illuminate\Support\Facades\Hash::check('oldsecret123', $user->fresh()->password))->toBeTrue();
+});
+
+it('rejects password change with a weak new password', function () {
+    $user = User::create([
+        'name' => 'Pwd Weak',
+        'email' => 'pwdweak@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->putJson('/api/user/password', [
+        'current_password' => 'oldsecret123',
+        'password' => 'short',
+        'password_confirmation' => 'short',
+    ])->assertStatus(422);
+});
