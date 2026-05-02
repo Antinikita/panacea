@@ -26,11 +26,13 @@ class Anamnesis extends Model
         'allergies',
         'medications',
         'review_of_systems',
+        'health_context',
         'generated_at',
     ];
 
     protected $casts = [
         'ai_raw_response' => 'array',
+        'health_context' => 'array',
         'generated_at' => 'datetime',
     ];
 

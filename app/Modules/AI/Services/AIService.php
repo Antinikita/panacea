@@ -51,7 +51,7 @@ class AIService
 
     private function buildPayload(string $message, array $history, User $user, string $locale): array
     {
-        $metrics = $this->healthQuery->recentSnapshot($user->id, 7);
+        $metrics = $this->healthQuery->recentSnapshot($user, 7);
 
         return [
             'message' => $message,

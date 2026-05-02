@@ -159,23 +159,34 @@ it("does not surface another user's metrics", function () {
 });
 
 it('exposes the recent snapshot via HealthQueryService for AI profile enrichment', function () {
-    // Two heart_rate readings on the same day → upsert means only the
-    // latest survives. Steps for yesterday survives independently.
+    // Set demographics so HealthNorms returns a deterministic range.
+    $this->user->update(['age' => 30, 'sex' => 'male']);
+
+    // Two heart_rate readings on different days so the 7-day average is
+    // a real average; same-day uploads would upsert into one row and
+    // collapse the average to a single point.
     $this->postJson('/api/health/metrics', [
         'metrics' => [
             ['type' => 'steps', 'value' => 5000, 'unit' => 'count', 'recorded_at' => now()->subDay()->toIso8601String()],
-            ['type' => 'heart_rate', 'value' => 65, 'unit' => 'bpm', 'recorded_at' => now()->subHours(8)->toIso8601String()],
-            ['type' => 'heart_rate', 'value' => 75, 'unit' => 'bpm', 'recorded_at' => now()->subHours(2)->toIso8601String()],
+            ['type' => 'heart_rate', 'value' => 65, 'unit' => 'bpm', 'recorded_at' => now()->subDays(2)->toIso8601String()],
+            ['type' => 'heart_rate', 'value' => 75, 'unit' => 'bpm', 'recorded_at' => now()->toIso8601String()],
         ],
     ])->assertCreated();
 
     $service = app(\App\Modules\Health\Services\HealthQueryService::class);
-    $snapshot = $service->recentSnapshot($this->user->id, 7);
+    $snapshot = $service->recentSnapshot($this->user, 7);
 
+    // New rich shape: each metric is {value, avg_7d, unit, status, norm}.
     expect($snapshot)
         ->toHaveKey('steps')
         ->toHaveKey('heart_rate')
-        ->and($snapshot['steps'])->toEqual(5000)
-        // After upsert there's only one heart_rate row left (75 wins).
-        ->and($snapshot['heart_rate'])->toEqual(75);
+        ->and($snapshot['heart_rate']['value'])->toEqual(75)       // today's row
+        ->and($snapshot['heart_rate']['unit'])->toBe('bpm')
+        ->and($snapshot['heart_rate']['status'])->toBe('normal')  // 30/male norm 60-82
+        ->and($snapshot['heart_rate']['norm'])->toBeArray()
+        ->and($snapshot['heart_rate']['norm']['min'])->toEqual(60)
+        ->and($snapshot['heart_rate']['avg_7d'])->toEqual(70)     // (65+75)/2
+        // Steps row is from yesterday → today's value is null, avg_7d carries it.
+        ->and($snapshot['steps']['avg_7d'])->toEqual(5000)
+        ->and($snapshot['steps']['norm']['target'])->toEqual(8000);
 });

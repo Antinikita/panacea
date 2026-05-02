@@ -6,6 +6,7 @@ use App\Modules\AI\Services\AIService;
 use App\Modules\Anamnesis\Models\Anamnesis;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
+use App\Modules\Health\Services\HealthQueryService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -103,9 +104,15 @@ class AnamnesisController extends Controller
                 $fields[$field] = $parsed[$field] ?? null;
             }
 
+            // Freeze the user's health snapshot at generation time so the
+            // anamnesis remains a faithful clinical record even when the
+            // user's metrics change afterwards.
+            $healthSnapshot = app(HealthQueryService::class)->recentSnapshot($chat->user, 7);
+
             $anamnesis = Anamnesis::create(array_merge($fields, [
                 'user_id' => Auth::id(),
                 'chat_id' => $chat->id,
+                'health_context' => $healthSnapshot ?: null,
                 'generated_at' => now(),
             ]));
 

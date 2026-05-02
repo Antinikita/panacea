@@ -88,30 +88,72 @@ class HealthQueryService
     }
 
     /**
-     * Compact recent-window snapshot for the AI's profile.metrics field.
-     * Returns rolled-up averages over the last $days days; empty array if
-     * the user has no recorded metrics in the window so the AI prompt
-     * doesn't get noise.
+     * Rich recent-window snapshot used both as the AI's profile.metrics
+     * payload and as the frozen `health_context` stored on anamneses.
      *
-     * @return array<string, float>
+     * Per metric type:
+     *   - value   today's reading (the latest row, since ingest is per-day-upsert)
+     *   - avg_7d  average over the past N days
+     *   - unit    "count" / "bpm" / "minutes"
+     *   - status  HealthNorms verdict ("below" | "normal" | "above")
+     *   - norm    the user's age/sex-keyed reference range
+     *
+     * Returns an empty array when the user has no recorded metrics in the
+     * window — preserves the AI's "no health context" behavior so it
+     * doesn't hallucinate values.
+     *
+     * @return array<string, array{value: float, avg_7d: float|null, unit: string, status: ?string, norm: array}>
      */
-    public function recentSnapshot(int $userId, int $days = 7): array
+    public function recentSnapshot(User $user, int $days = 7): array
     {
-        $since = CarbonImmutable::now()->subDays($days);
+        $today = CarbonImmutable::now()->toDateString();
+        $since = CarbonImmutable::now()->subDays($days)->toDateString();
 
-        $rows = DB::table('health_metrics')
-            ->where('user_id', $userId)
-            ->where('recorded_at', '>=', $since)
-            ->select('type', DB::raw('AVG(value) AS avg_value'), DB::raw('SUM(value) AS sum_value'))
+        // Today's row per type (ingest is per-day-upsert, so at most one row).
+        $todayRows = DB::table('health_metrics')
+            ->where('user_id', $user->id)
+            ->where('recorded_on', $today)
+            ->get(['type', 'value', 'unit'])
+            ->keyBy('type');
+
+        // 7-day window averages — even if today has no row, last week's
+        // metrics still anchor the AI's understanding of the user.
+        $avg7d = DB::table('health_metrics')
+            ->where('user_id', $user->id)
+            ->where('recorded_on', '>=', $since)
+            ->select('type', DB::raw('AVG(value) AS avg_value'))
             ->groupBy('type')
-            ->get();
+            ->get()
+            ->keyBy('type');
 
+        // No data at all → no snapshot.
+        if ($todayRows->isEmpty() && $avg7d->isEmpty()) {
+            return [];
+        }
+
+        $norms = HealthNorms::forUser($user);
         $snapshot = [];
-        foreach ($rows as $r) {
-            $snapshot[$r->type] = match ($r->type) {
-                'steps', 'sleep_duration' => round((float) $r->sum_value, 1),
-                default => round((float) $r->avg_value, 1),
-            };
+
+        foreach (['steps', 'heart_rate', 'sleep_duration'] as $type) {
+            $today = $todayRows[$type] ?? null;
+            $weekly = $avg7d[$type] ?? null;
+
+            // Skip metrics with no data in either window.
+            if (!$today && !$weekly) {
+                continue;
+            }
+
+            $value = $today ? (float) $today->value : null;
+            $weeklyAvg = $weekly ? round((float) $weekly->avg_value, 1) : null;
+            $norm = $norms[$type] ?? null;
+
+            $snapshot[$type] = [
+                'value' => $value,
+                'avg_7d' => $weeklyAvg,
+                'unit' => $today->unit ?? $norm['unit'] ?? '',
+                'status' => ($value !== null && $norm) ? HealthNorms::statusFor($type, $value, $norm) : null,
+                'norm' => $norm ?: null,
+            ];
         }
 
         return $snapshot;
