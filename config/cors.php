@@ -10,7 +10,12 @@ return [
     '#^https?://192\.168\..*#',],
 
     'allowed_headers' => [
-        '*'
+        'Authorization',
+        'Content-Type',
+        'Accept',
+        'X-Requested-With',
+        'Idempotency-Key',
+        'X-Request-Id',
     ],
 
     'exposed_headers' => ['Authorization'],

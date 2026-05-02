@@ -1,47 +1,34 @@
 <?php
 
-/*
-|--------------------------------------------------------------------------
-| Test Case
-|--------------------------------------------------------------------------
-|
-| The closure you provide to your test functions is always bound to a specific PHPUnit test
-| case class. By default, that class is "PHPUnit\Framework\TestCase". Of course, you may
-| need to change it using the "pest()" function to bind a different classes or traits.
-|
-*/
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
-pest()->extend(Tests\TestCase::class)
- // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
-    ->in('Feature');
-
-/*
-|--------------------------------------------------------------------------
-| Expectations
-|--------------------------------------------------------------------------
-|
-| When you're writing tests, you often need to check that values meet certain conditions. The
-| "expect()" function gives you access to a set of "expectations" methods that you can use
-| to assert different things. Of course, you may extend the Expectation API at any time.
-|
-*/
+// Module-grouped tests live in app/Modules/<Name>/Tests/Feature and bind
+// Tests\TestCase + RefreshDatabase via uses() at the top of each file,
+// because Pest only auto-applies the extension to tests under tests/.
 
 expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
 
-/*
-|--------------------------------------------------------------------------
-| Functions
-|--------------------------------------------------------------------------
-|
-| While Pest is very powerful out-of-the-box, you may have some testing code specific to your
-| project that you don't want to repeat in every file. Here you can also expose helpers as
-| global functions to help you to reduce the number of lines of code in your test files.
-|
-*/
-
-function something()
+function seedPermissions(): void
 {
-    // ..
+    app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+    $permissions = [
+        'chat.create', 'chat.read', 'chat.update', 'chat.delete',
+        'anamnesis.create', 'anamnesis.read', 'anamnesis.update', 'anamnesis.delete',
+    ];
+
+    foreach ($permissions as $perm) {
+        Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
+    }
+
+    $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $admin->syncPermissions(Permission::all());
+
+    $user = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
+    $user->syncPermissions($permissions);
 }

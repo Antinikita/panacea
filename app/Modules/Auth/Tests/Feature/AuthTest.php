@@ -1,0 +1,260 @@
+<?php
+
+use App\Modules\Auth\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Spatie\Activitylog\Models\Activity;
+
+uses(Tests\TestCase::class, RefreshDatabase::class);
+
+beforeEach(fn () => seedPermissions());
+
+it('registers a new user, returns a token, and assigns the user role', function () {
+    $response = $this->postJson('/api/register', [
+        'name' => 'Alice',
+        'email' => 'alice@example.com',
+        'password' => 'secret123',
+        'password_confirmation' => 'secret123',
+        'sex' => 'female',
+        'age' => 28,
+    ]);
+
+    $response->assertCreated()
+        ->assertJsonStructure(['token', 'token_type', 'user' => ['id', 'name', 'email'], 'roles', 'permissions']);
+
+    $user = User::where('email', 'alice@example.com')->first();
+    expect($user)->not->toBeNull()
+        ->and($user->hasRole('user'))->toBeTrue();
+});
+
+it('rejects registration with mismatched password confirmation', function () {
+    $this->postJson('/api/register', [
+        'name' => 'Bob',
+        'email' => 'bob@example.com',
+        'password' => 'secret123',
+        'password_confirmation' => 'mismatched',
+    ])->assertStatus(422);
+});
+
+it('rejects registration when the password is too weak', function () {
+    $this->postJson('/api/register', [
+        'name' => 'Weakling',
+        'email' => 'weak@example.com',
+        'password' => 'short',
+        'password_confirmation' => 'short',
+    ])->assertStatus(422)
+        ->assertJsonValidationErrors(['password']);
+});
+
+it('logs in with valid credentials and returns a token', function () {
+    $user = User::create([
+        'name' => 'Carol',
+        'email' => 'carol@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    $response = $this->postJson('/api/login', [
+        'email' => 'carol@example.com',
+        'password' => 'secret123',
+    ]);
+
+    $response->assertOk()
+        ->assertJsonStructure(['token', 'user' => ['id', 'email'], 'roles', 'permissions']);
+});
+
+it('rejects login with the wrong password', function () {
+    $user = User::create([
+        'name' => 'Dan',
+        'email' => 'dan@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    $this->postJson('/api/login', [
+        'email' => 'dan@example.com',
+        'password' => 'WRONG',
+    ])->assertStatus(422);
+});
+
+it('exposes a deep health probe that reports ai-service reachability', function () {
+    \Illuminate\Support\Facades\Http::fake([
+        '*' => \Illuminate\Support\Facades\Http::response(['ok' => true], 200),
+    ]);
+
+    config(['app.env' => 'testing']);
+    putenv('AI_MODULE_URL=http://stub.local');
+
+    $response = $this->getJson('/api/health/deep');
+
+    $response->assertOk()
+        ->assertJsonPath('laravel', 'ok')
+        ->assertJsonPath('ai_service.status', 'ok');
+});
+
+it('returns an X-Request-Id header on every response', function () {
+    $response = $this->getJson('/api/health');
+
+    $response->assertOk();
+    expect($response->headers->get('X-Request-Id'))
+        ->toMatch('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i');
+});
+
+it('echoes a valid incoming X-Request-Id header back', function () {
+    $incoming = 'abcdef01-2345-6789-abcd-ef0123456789';
+
+    $response = $this->withHeader('X-Request-Id', $incoming)->getJson('/api/health');
+
+    $response->assertOk();
+    expect($response->headers->get('X-Request-Id'))->toBe($incoming);
+});
+
+it('records auth events in the activity log', function () {
+    $user = User::create([
+        'name' => 'Audit',
+        'email' => 'audit@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    $this->postJson('/api/login', [
+        'email' => 'audit@example.com',
+        'password' => 'WRONG',
+    ])->assertStatus(422);
+
+    $this->postJson('/api/login', [
+        'email' => 'audit@example.com',
+        'password' => 'secret123',
+    ])->assertOk();
+
+    $events = Activity::where('log_name', 'auth')
+        ->orderBy('id')
+        ->pluck('event')
+        ->all();
+
+    expect($events)->toContain('login_failed', 'login_success');
+});
+
+it('throttles /login after 5 attempts per IP', function () {
+    for ($i = 0; $i < 5; $i++) {
+        $this->postJson('/api/login', [
+            'email' => "spammer{$i}@example.com",
+            'password' => 'whatever',
+        ]);
+    }
+
+    $this->postJson('/api/login', [
+        'email' => 'spammer-final@example.com',
+        'password' => 'whatever',
+    ])->assertStatus(429);
+});
+
+it('revokes the current token on logout', function () {
+    $user = User::create([
+        'name' => 'Eve',
+        'email' => 'eve@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->postJson('/api/logout')->assertOk();
+});
+
+it('updates the authenticated user\'s profile fields', function () {
+    $user = User::create([
+        'name' => 'Old Name',
+        'email' => 'who@example.com',
+        'password' => 'secret123',
+        'sex' => 'male',
+        'age' => 30,
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $response = $this->patchJson('/api/user', [
+        'name' => 'New Name',
+        'sex' => 'female',
+        'age' => 35,
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('user.name', 'New Name')
+        ->assertJsonPath('user.sex', 'female')
+        ->assertJsonPath('user.age', 35);
+
+    expect($user->fresh()->name)->toBe('New Name');
+});
+
+it('rejects profile update with an invalid sex value', function () {
+    $user = User::create([
+        'name' => 'X',
+        'email' => 'x@example.com',
+        'password' => 'secret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->patchJson('/api/user', ['sex' => 'whatever'])->assertStatus(422);
+});
+
+it('changes the password when the current one is correct', function () {
+    $user = User::create([
+        'name' => 'Pwd Changer',
+        'email' => 'pwd@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $response = $this->putJson('/api/user/password', [
+        'current_password' => 'oldsecret123',
+        'password' => 'newsecret456',
+        'password_confirmation' => 'newsecret456',
+    ]);
+
+    $response->assertOk();
+
+    expect(\Illuminate\Support\Facades\Hash::check('newsecret456', $user->fresh()->password))->toBeTrue();
+});
+
+it('rejects password change with the wrong current password', function () {
+    $user = User::create([
+        'name' => 'Pwd Failure',
+        'email' => 'pwdfail@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->putJson('/api/user/password', [
+        'current_password' => 'WRONG',
+        'password' => 'newsecret456',
+        'password_confirmation' => 'newsecret456',
+    ])->assertStatus(422);
+
+    // password unchanged
+    expect(\Illuminate\Support\Facades\Hash::check('oldsecret123', $user->fresh()->password))->toBeTrue();
+});
+
+it('rejects password change with a weak new password', function () {
+    $user = User::create([
+        'name' => 'Pwd Weak',
+        'email' => 'pwdweak@example.com',
+        'password' => 'oldsecret123',
+    ]);
+    $user->assignRole('user');
+
+    Sanctum::actingAs($user);
+
+    $this->putJson('/api/user/password', [
+        'current_password' => 'oldsecret123',
+        'password' => 'short',
+        'password_confirmation' => 'short',
+    ])->assertStatus(422);
+});
