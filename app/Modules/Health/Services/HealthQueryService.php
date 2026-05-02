@@ -2,6 +2,7 @@
 
 namespace App\Modules\Health\Services;
 
+use App\Modules\Auth\Models\User;
 use App\Modules\Health\Models\HealthMetric;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -46,26 +47,43 @@ class HealthQueryService
     /**
      * One-day rollup for the dashboard summary card.
      *
-     * @return array{date: string, steps: ?float, avg_heart_rate: ?float, sleep_minutes: ?float}
+     * Now that ingest is per-day-upsert, there's at most one row per
+     * (user, type, day), so we read that row's value directly. Each
+     * metric ships with its norm-derived `status` so the frontend
+     * doesn't have to compute it.
      */
     public function summaryFor(int $userId, string $date): array
     {
-        $day = CarbonImmutable::parse($date)->startOfDay();
-        $next = $day->addDay();
+        $day = CarbonImmutable::parse($date)->toDateString();
 
         $rows = DB::table('health_metrics')
             ->where('user_id', $userId)
-            ->whereBetween('recorded_at', [$day, $next])
-            ->select('type', DB::raw('SUM(value) AS sum_value'), DB::raw('AVG(value) AS avg_value'))
-            ->groupBy('type')
-            ->get()
+            ->where('recorded_on', $day)
+            ->get(['type', 'value', 'unit'])
             ->keyBy('type');
 
+        $user = User::find($userId);
+        $norms = $user ? HealthNorms::forUser($user) : [];
+
+        $shape = function (string $type) use ($rows, $norms): ?array {
+            if (!isset($rows[$type])) {
+                return null;
+            }
+            $value = (float) $rows[$type]->value;
+            $norm = $norms[$type] ?? null;
+
+            return [
+                'value' => $value,
+                'unit' => $rows[$type]->unit,
+                'status' => $norm ? HealthNorms::statusFor($type, $value, $norm) : null,
+            ];
+        };
+
         return [
-            'date' => $day->toDateString(),
-            'steps' => isset($rows['steps']) ? (float) $rows['steps']->sum_value : null,
-            'avg_heart_rate' => isset($rows['heart_rate']) ? (float) $rows['heart_rate']->avg_value : null,
-            'sleep_minutes' => isset($rows['sleep_duration']) ? (float) $rows['sleep_duration']->sum_value : null,
+            'date' => $day,
+            'steps' => $shape('steps'),
+            'heart_rate' => $shape('heart_rate'),
+            'sleep_duration' => $shape('sleep_duration'),
         ];
     }
 

@@ -2303,28 +2303,103 @@
                                         },
                                         "steps": {
                                             "type": [
-                                                "number",
+                                                "object",
                                                 "null"
+                                            ],
+                                            "properties": {
+                                                "value": {
+                                                    "type": "number"
+                                                },
+                                                "unit": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "enum": [
+                                                        "normal",
+                                                        "above",
+                                                        "below",
+                                                        null
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "value",
+                                                "unit",
+                                                "status"
                                             ]
                                         },
-                                        "avg_heart_rate": {
+                                        "heart_rate": {
                                             "type": [
-                                                "number",
+                                                "object",
                                                 "null"
+                                            ],
+                                            "properties": {
+                                                "value": {
+                                                    "type": "number"
+                                                },
+                                                "unit": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "enum": [
+                                                        "normal",
+                                                        "above",
+                                                        "below",
+                                                        null
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "value",
+                                                "unit",
+                                                "status"
                                             ]
                                         },
-                                        "sleep_minutes": {
+                                        "sleep_duration": {
                                             "type": [
-                                                "number",
+                                                "object",
                                                 "null"
+                                            ],
+                                            "properties": {
+                                                "value": {
+                                                    "type": "number"
+                                                },
+                                                "unit": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "enum": [
+                                                        "normal",
+                                                        "above",
+                                                        "below",
+                                                        null
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "value",
+                                                "unit",
+                                                "status"
                                             ]
                                         }
                                     },
                                     "required": [
                                         "date",
                                         "steps",
-                                        "avg_heart_rate",
-                                        "sleep_minutes"
+                                        "heart_rate",
+                                        "sleep_duration"
                                     ]
                                 }
                             }
@@ -2332,6 +2407,229 @@
                     },
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/health/norms": {
+            "get": {
+                "operationId": "healthNorms.show",
+                "description": "For educational comparison only \u2014 not a medical-grade dataset.",
+                "summary": "Returns the population-norm reference ranges for the authenticated\nuser's age + sex. Used by the React frontend to overlay a shaded\n\"normal\" band on each trend chart",
+                "tags": [
+                    "HealthNorms"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "user": {
+                                            "type": "object",
+                                            "properties": {
+                                                "age": {
+                                                    "type": "string"
+                                                },
+                                                "sex": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "age",
+                                                "sex"
+                                            ]
+                                        },
+                                        "norms": {
+                                            "type": "object",
+                                            "properties": {
+                                                "steps": {
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "low": {
+                                                                    "type": "integer",
+                                                                    "const": 3000
+                                                                },
+                                                                "target": {
+                                                                    "type": "integer",
+                                                                    "const": 5000
+                                                                },
+                                                                "high": {
+                                                                    "type": "integer",
+                                                                    "const": 8000
+                                                                },
+                                                                "unit": {
+                                                                    "type": "string",
+                                                                    "const": "count"
+                                                                },
+                                                                "label": {
+                                                                    "type": "string",
+                                                                    "const": "Older adults"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "low",
+                                                                "target",
+                                                                "high",
+                                                                "unit",
+                                                                "label"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "low": {
+                                                                    "type": "integer",
+                                                                    "const": 4000
+                                                                },
+                                                                "target": {
+                                                                    "type": "integer",
+                                                                    "const": 7000
+                                                                },
+                                                                "high": {
+                                                                    "type": "integer",
+                                                                    "const": 10000
+                                                                },
+                                                                "unit": {
+                                                                    "type": "string",
+                                                                    "const": "count"
+                                                                },
+                                                                "label": {
+                                                                    "type": "string",
+                                                                    "const": "Adults 50\u201364"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "low",
+                                                                "target",
+                                                                "high",
+                                                                "unit",
+                                                                "label"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "low": {
+                                                                    "type": "integer",
+                                                                    "const": 5000
+                                                                },
+                                                                "target": {
+                                                                    "type": "integer",
+                                                                    "const": 8000
+                                                                },
+                                                                "high": {
+                                                                    "type": "integer",
+                                                                    "const": 12000
+                                                                },
+                                                                "unit": {
+                                                                    "type": "string",
+                                                                    "const": "count"
+                                                                },
+                                                                "label": {
+                                                                    "type": "string",
+                                                                    "const": "Adults"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "low",
+                                                                "target",
+                                                                "high",
+                                                                "unit",
+                                                                "label"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "low": {
+                                                                    "type": "integer",
+                                                                    "const": 6000
+                                                                },
+                                                                "target": {
+                                                                    "type": "integer",
+                                                                    "const": 12000
+                                                                },
+                                                                "high": {
+                                                                    "type": "integer",
+                                                                    "const": 16000
+                                                                },
+                                                                "unit": {
+                                                                    "type": "string",
+                                                                    "const": "count"
+                                                                },
+                                                                "label": {
+                                                                    "type": "string",
+                                                                    "const": "Children/teens"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "low",
+                                                                "target",
+                                                                "high",
+                                                                "unit",
+                                                                "label"
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                "heart_rate": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                },
+                                                "sleep_duration": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "min": {
+                                                            "type": "string"
+                                                        },
+                                                        "max": {
+                                                            "type": "string"
+                                                        },
+                                                        "avg": {
+                                                            "type": "string"
+                                                        },
+                                                        "unit": {
+                                                            "type": "string",
+                                                            "const": "minutes"
+                                                        },
+                                                        "label": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "min",
+                                                        "max",
+                                                        "avg",
+                                                        "unit",
+                                                        "label"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "steps",
+                                                "heart_rate",
+                                                "sleep_duration"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "user",
+                                        "norms"
+                                    ]
+                                }
+                            }
+                        }
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"

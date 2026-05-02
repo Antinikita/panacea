@@ -14,6 +14,8 @@ beforeEach(function () {
         'name' => 'Healthy',
         'email' => 'healthy@example.com',
         'password' => 'secret123',
+        'sex' => 'male',
+        'age' => 30,
     ]);
     $this->user->assignRole('user');
 
@@ -52,23 +54,84 @@ it('rejects more than 500 metrics per batch', function () {
     $this->postJson('/api/health/metrics', ['metrics' => $tooMany])->assertStatus(422);
 });
 
-it('returns the summary for a given day with aggregated steps + avg heart rate', function () {
+it('upserts a same-day metric instead of duplicating', function () {
+    // Two uploads for the same day → one row, latest wins.
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 5000, 'unit' => 'count', 'recorded_at' => '2026-04-28T08:00:00Z']],
+    ])->assertCreated();
+
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 8000, 'unit' => 'count', 'recorded_at' => '2026-04-28T15:00:00Z']],
+    ])->assertCreated();
+
+    $rows = DB::table('health_metrics')->where('user_id', $this->user->id)->where('type', 'steps')->get();
+    expect($rows)->toHaveCount(1);
+    expect((float) $rows[0]->value)->toEqual(8000);
+});
+
+it("keeps yesterday's row when today's gets a new reading", function () {
     $this->postJson('/api/health/metrics', [
         'metrics' => [
-            ['type' => 'steps', 'value' => 1000, 'unit' => 'count', 'recorded_at' => '2026-04-28T08:00:00Z'],
-            ['type' => 'steps', 'value' => 2000, 'unit' => 'count', 'recorded_at' => '2026-04-28T15:00:00Z'],
-            ['type' => 'heart_rate', 'value' => 60, 'unit' => 'bpm', 'recorded_at' => '2026-04-28T08:00:00Z'],
-            ['type' => 'heart_rate', 'value' => 80, 'unit' => 'bpm', 'recorded_at' => '2026-04-28T15:00:00Z'],
+            ['type' => 'steps', 'value' => 3000, 'unit' => 'count', 'recorded_at' => '2026-04-27T08:00:00Z'],
+            ['type' => 'steps', 'value' => 7000, 'unit' => 'count', 'recorded_at' => '2026-04-28T08:00:00Z'],
         ],
     ])->assertCreated();
 
-    $response = $this->getJson('/api/health/summary?date=2026-04-28');
+    expect(DB::table('health_metrics')->where('user_id', $this->user->id)->where('type', 'steps')->count())
+        ->toBe(2);
+});
+
+it('drops the source attribute on ingest', function () {
+    // The payload includes source but the schema no longer has the column.
+    // Should succeed because the validator allows source as nullable (kept
+    // for backwards compatibility with old iOS clients).
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [[
+            'type' => 'steps',
+            'value' => 1000,
+            'unit' => 'count',
+            'recorded_at' => '2026-04-28T08:00:00Z',
+            'source' => 'healthkit',
+        ]],
+    ])->assertCreated();
+
+    expect(DB::getSchemaBuilder()->hasColumn('health_metrics', 'source'))->toBeFalse();
+});
+
+it('returns the summary with status badges from norms', function () {
+    $today = now()->toDateString();
+
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [
+            // 30/male norm: steps low=5000, target=8000, high=12000.
+            ['type' => 'steps', 'value' => 2000, 'unit' => 'count', 'recorded_at' => now()->toIso8601String()],
+            // 30/male norm: heart_rate min=60, max=82, avg=70 → 72 is normal.
+            ['type' => 'heart_rate', 'value' => 72, 'unit' => 'bpm', 'recorded_at' => now()->toIso8601String()],
+        ],
+    ])->assertCreated();
+
+    $response = $this->getJson("/api/health/summary?date={$today}");
 
     $response->assertOk()
-        ->assertJsonPath('date', '2026-04-28');
+        ->assertJsonPath('steps.status', 'below')
+        ->assertJsonPath('heart_rate.status', 'normal')
+        ->assertJsonPath('sleep_duration', null);
 
-    expect($response->json('steps'))->toEqual(3000)
-        ->and($response->json('avg_heart_rate'))->toEqual(70);
+    expect($response->json('steps.value'))->toEqual(2000)
+        ->and($response->json('heart_rate.value'))->toEqual(72);
+});
+
+it('returns norms for the authenticated user age + sex', function () {
+    $response = $this->getJson('/api/health/norms');
+
+    $response->assertOk()
+        ->assertJsonPath('user.age', 30)
+        ->assertJsonPath('user.sex', 'male')
+        ->assertJsonPath('norms.steps.target', 8000)
+        ->assertJsonPath('norms.steps.unit', 'count')
+        ->assertJsonPath('norms.heart_rate.min', 60)
+        ->assertJsonPath('norms.heart_rate.max', 82)
+        ->assertJsonPath('norms.sleep_duration.unit', 'minutes');
 });
 
 it("does not surface another user's metrics", function () {
@@ -84,8 +147,8 @@ it("does not surface another user's metrics", function () {
         'type' => 'steps',
         'value' => 9999,
         'unit' => 'count',
-        'source' => 'healthkit',
         'recorded_at' => '2026-04-28 08:00:00',
+        'recorded_on' => '2026-04-28',
         'created_at' => now(),
         'updated_at' => now(),
     ]);
@@ -96,11 +159,13 @@ it("does not surface another user's metrics", function () {
 });
 
 it('exposes the recent snapshot via HealthQueryService for AI profile enrichment', function () {
+    // Two heart_rate readings on the same day → upsert means only the
+    // latest survives. Steps for yesterday survives independently.
     $this->postJson('/api/health/metrics', [
         'metrics' => [
             ['type' => 'steps', 'value' => 5000, 'unit' => 'count', 'recorded_at' => now()->subDay()->toIso8601String()],
-            ['type' => 'heart_rate', 'value' => 65, 'unit' => 'bpm', 'recorded_at' => now()->subDay()->toIso8601String()],
-            ['type' => 'heart_rate', 'value' => 75, 'unit' => 'bpm', 'recorded_at' => now()->subHours(6)->toIso8601String()],
+            ['type' => 'heart_rate', 'value' => 65, 'unit' => 'bpm', 'recorded_at' => now()->subHours(8)->toIso8601String()],
+            ['type' => 'heart_rate', 'value' => 75, 'unit' => 'bpm', 'recorded_at' => now()->subHours(2)->toIso8601String()],
         ],
     ])->assertCreated();
 
@@ -111,5 +176,6 @@ it('exposes the recent snapshot via HealthQueryService for AI profile enrichment
         ->toHaveKey('steps')
         ->toHaveKey('heart_rate')
         ->and($snapshot['steps'])->toEqual(5000)
-        ->and($snapshot['heart_rate'])->toEqual(70);
+        // After upsert there's only one heart_rate row left (75 wins).
+        ->and($snapshot['heart_rate'])->toEqual(75);
 });
