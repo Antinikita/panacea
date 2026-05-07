@@ -18,7 +18,8 @@ class ChatMessage extends Model
     ];
 
     protected $casts = [
-        'metadata' => 'json',
+        'message' => 'encrypted',
+        'metadata' => 'encrypted:array',
     ];
 
     public function chat()

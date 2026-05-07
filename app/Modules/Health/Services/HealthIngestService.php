@@ -3,6 +3,7 @@
 namespace App\Modules\Health\Services;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,7 +29,7 @@ class HealthIngestService
             return [
                 'user_id' => $userId,
                 'type' => $m['type'],
-                'value' => (float) $m['value'],
+                'value' => Crypt::encryptString((string) (float) $m['value']),
                 'unit' => $m['unit'],
                 'recorded_at' => $recordedAt->toDateTimeString(),
                 'recorded_on' => $recordedAt->toDateString(),

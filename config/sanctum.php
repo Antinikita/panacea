@@ -4,7 +4,11 @@ return [
 
     'guard' => ['web'],
 
-    'expiration' => 43200, // 30 days, in minutes
+    // 7 days default (in minutes); override via SANCTUM_EXPIRATION env.
+    // Stolen tokens are useful only for this window before forcing re-auth.
+    'expiration' => (int) env('SANCTUM_EXPIRATION', 10080),
+
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
 
     'middleware' => [
         'web',

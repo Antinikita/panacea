@@ -7,6 +7,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('throttle:api-default')->group(function () {
         Route::get('/anamneses', [AnamnesisController::class, 'index'])->middleware('can:anamnesis.read');
         Route::get('/anamneses/{id}', [AnamnesisController::class, 'show'])->middleware('can:anamnesis.read');
+        Route::get('/anamneses/{id}/download', [AnamnesisController::class, 'download'])->middleware('can:anamnesis.read');
         Route::patch('/anamneses/{id}', [AnamnesisController::class, 'update'])->middleware('can:anamnesis.update');
         Route::put('/anamneses/{id}', [AnamnesisController::class, 'update'])->middleware('can:anamnesis.update');
         Route::delete('/anamneses/{id}', [AnamnesisController::class, 'destroy'])->middleware('can:anamnesis.delete');

@@ -66,15 +66,13 @@ it("freezes the user's health context into the anamnesis at generation time", fu
     // deterministic range and the assertion against status is stable.
     $this->user->update(['age' => 30, 'sex' => 'male']);
 
-    DB::table('health_metrics')->insert([
+    \App\Modules\Health\Models\HealthMetric::create([
         'user_id' => $this->user->id,
         'type' => 'steps',
         'value' => 2000, // 30/male norm low=5000 → status='below'
         'unit' => 'count',
         'recorded_at' => now(),
         'recorded_on' => now()->toDateString(),
-        'created_at' => now(),
-        'updated_at' => now(),
     ]);
 
     $this->mock(AIService::class, function ($mock) {

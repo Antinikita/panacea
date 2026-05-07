@@ -3,18 +3,40 @@
 namespace App\Modules\Auth\Http\Controllers;
 
 use App\Modules\Auth\Models\User;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
+    /**
+     * Materialize SANCTUM_EXPIRATION (minutes) into a Carbon expiry that
+     * createToken() can stamp onto personal_access_tokens.expires_at.
+     * Without this Sanctum leaves the column NULL — tokens still expire
+     * at the auth-guard layer, but they linger in the table forever and
+     * the prune in routes/console.php can't reach them.
+     */
+    private function tokenExpiration(): ?\DateTimeInterface
+    {
+        $minutes = (int) config('sanctum.expiration', 0);
+        return $minutes > 0 ? now()->addMinutes($minutes) : null;
+    }
+
     public function register(Request $request)
     {
         $attributes = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'email' => [
+                'required', 'string', 'email', 'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (User::byEmail((string) $value)) {
+                        $fail('The email has already been taken.');
+                    }
+                },
+            ],
             'sex' => 'nullable|string',
             'age' => 'nullable|integer',
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
@@ -29,8 +51,9 @@ class AuthController extends Controller
         ]);
 
         $user->assignRole('user');
+        $user->sendEmailVerificationNotification();
 
-        $token = $user->createToken('api-token')->plainTextToken;
+        $token = $user->createToken('api-token', ['*'], $this->tokenExpiration())->plainTextToken;
 
         activity('auth')
             ->causedBy($user)
@@ -52,17 +75,17 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+            'email' => 'required|string|email',
+            'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
+        $user = User::byEmail($credentials['email']);
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
             activity('auth')
                 ->causedBy($user)
                 ->withProperties([
-                    'email' => $credentials['email'],
+                    'email_hash' => User::hashEmail($credentials['email']),
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                 ])
@@ -74,7 +97,14 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $token = $user->createToken('api-token')->plainTextToken;
+        // Silently upgrade hashes that were created under a weaker
+        // BCRYPT_ROUNDS setting. The 'hashed' cast re-hashes on assign.
+        if (Hash::needsRehash($user->password)) {
+            $user->password = $credentials['password'];
+            $user->save();
+        }
+
+        $token = $user->createToken('api-token', ['*'], $this->tokenExpiration())->plainTextToken;
 
         activity('auth')
             ->causedBy($user)
@@ -125,7 +155,7 @@ class AuthController extends Controller
     public function updatePassword(Request $request)
     {
         $request->validate([
-            'current_password' => ['required', 'current_password'],
+            'current_password' => ['required', 'string', 'current_password'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ]);
 
@@ -150,6 +180,120 @@ class AuthController extends Controller
             ->log('password_changed');
 
         return response()->json(['message' => 'Password updated']);
+    }
+
+    public function verifyEmail(Request $request, string $id, string $hash)
+    {
+        if (! $request->hasValidSignature()) {
+            return response()->json(['error' => 'Invalid or expired verification link'], 403);
+        }
+
+        $user = User::find($id);
+        if (! $user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+
+        if (! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
+            return response()->json(['error' => 'Invalid verification hash'], 403);
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+            event(new Verified($user));
+        }
+
+        return response()->json([
+            'message' => 'Email verified',
+            'verified_at' => $user->email_verified_at,
+        ]);
+    }
+
+    public function resendEmailVerification(Request $request)
+    {
+        $user = $request->user();
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email already verified'], 200);
+        }
+        $user->sendEmailVerificationNotification();
+
+        return response()->json(['message' => 'Verification link sent']);
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|string|email',
+        ]);
+
+        // Always respond identically regardless of whether the email is
+        // registered — prevents user enumeration via this endpoint. We
+        // resolve the user via the email_hash sidecar column because
+        // users.email is encrypted ciphertext (random IV per row), so a
+        // direct WHERE on email never matches.
+        $user = User::byEmail($request->input('email'));
+        if ($user) {
+            $token = PasswordBroker::broker()->getRepository()->create($user);
+            $user->sendPasswordResetNotification($token);
+        }
+
+        return response()->json([
+            'message' => 'If an account exists for that email, a reset link has been sent.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+            'email' => 'required|string|email',
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+        ]);
+
+        $user = User::byEmail($request->input('email'));
+        $repository = PasswordBroker::broker()->getRepository();
+
+        if (! $user || ! $repository->exists($user, $request->input('token'))) {
+            return response()->json([
+                'errors' => ['email' => ['Invalid or expired reset link.']],
+            ], 422);
+        }
+
+        $user->password = $request->input('password');
+        $user->save();
+        $user->tokens()->delete();
+        $repository->delete($user);
+
+        activity('auth')
+            ->causedBy($user)
+            ->withProperties(['ip' => $request->ip(), 'user_agent' => $request->userAgent()])
+            ->event('password_reset')
+            ->log('password_reset');
+
+        return response()->json(['message' => 'Password has been reset']);
+    }
+
+    public function deleteAccount(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'string', 'current_password'],
+        ]);
+
+        $user = $request->user();
+        $userId = $user->id;
+
+        $user->tokens()->delete();
+        $user->delete();
+
+        activity('auth')
+            ->withProperties([
+                'deleted_user_id' => $userId,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ])
+            ->event('account_deleted')
+            ->log('account_deleted');
+
+        return response()->json(['message' => 'Account deleted'], 200);
     }
 
     public function logout(Request $request)
@@ -204,7 +348,9 @@ class AuthController extends Controller
             'device_name' => 'required|string|max:255',
         ]);
 
-        $token = $request->user()->createToken($validated['device_name'])->plainTextToken;
+        $token = $request->user()
+            ->createToken($validated['device_name'], ['*'], $this->tokenExpiration())
+            ->plainTextToken;
 
         return response()->json([
             'message' => 'Token created',

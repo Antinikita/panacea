@@ -56,8 +56,8 @@ class HealthQueryService
     {
         $day = CarbonImmutable::parse($date)->toDateString();
 
-        $rows = DB::table('health_metrics')
-            ->where('user_id', $userId)
+        // Eloquent (not DB::table) so the 'encrypted' cast on `value` decrypts.
+        $rows = HealthMetric::where('user_id', $userId)
             ->where('recorded_on', $day)
             ->get(['type', 'value', 'unit'])
             ->keyBy('type');
@@ -110,23 +110,21 @@ class HealthQueryService
         $since = CarbonImmutable::now()->subDays($days)->toDateString();
 
         // Today's row per type (ingest is per-day-upsert, so at most one row).
-        $todayRows = DB::table('health_metrics')
-            ->where('user_id', $user->id)
+        // Eloquent so the 'encrypted' cast on `value` runs on read.
+        $todayRows = HealthMetric::where('user_id', $user->id)
             ->where('recorded_on', $today)
             ->get(['type', 'value', 'unit'])
             ->keyBy('type');
 
-        // 7-day window averages — even if today has no row, last week's
-        // metrics still anchor the AI's understanding of the user.
-        $avg7d = DB::table('health_metrics')
-            ->where('user_id', $user->id)
+        // 7-day window averages must be computed in PHP because the value
+        // column is now encrypted ciphertext on disk; SQL AVG over base64
+        // is meaningless. Window is at most ~21 rows (3 types × 7 days).
+        $avg7d = HealthMetric::where('user_id', $user->id)
             ->where('recorded_on', '>=', $since)
-            ->select('type', DB::raw('AVG(value) AS avg_value'))
+            ->get(['type', 'value'])
             ->groupBy('type')
-            ->get()
-            ->keyBy('type');
+            ->map(fn ($group) => $group->avg(fn ($m) => (float) $m->value));
 
-        // No data at all → no snapshot.
         if ($todayRows->isEmpty() && $avg7d->isEmpty()) {
             return [];
         }
@@ -139,12 +137,12 @@ class HealthQueryService
             $weekly = $avg7d[$type] ?? null;
 
             // Skip metrics with no data in either window.
-            if (!$today && !$weekly) {
+            if (!$today && $weekly === null) {
                 continue;
             }
 
             $value = $today ? (float) $today->value : null;
-            $weeklyAvg = $weekly ? round((float) $weekly->avg_value, 1) : null;
+            $weeklyAvg = $weekly !== null ? round((float) $weekly, 1) : null;
             $norm = $norms[$type] ?? null;
 
             $snapshot[$type] = [

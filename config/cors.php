@@ -1,13 +1,16 @@
 <?php
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'], // all your routes are under api/*, that's all you need
+    'paths' => ['api/*'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => explode(',', env('ALLOWED_ORIGINS', 'localhost')),
+    'allowed_origins' => array_filter(
+        array_map('trim', explode(',', (string) env('ALLOWED_ORIGINS', 'http://localhost:3000')))
+    ),
 
-    'allowed_origins_patterns' => [ '#^http://(localhost|127\.0\.0\.1):\d+$#',
-    '#^https?://192\.168\..*#',],
+    'allowed_origins_patterns' => [
+        '#^http://(localhost|127\.0\.0\.1):\d+$#',
+    ],
 
     'allowed_headers' => [
         'Authorization',
@@ -19,7 +22,7 @@ return [
     ],
 
     'exposed_headers' => ['Authorization'],
-    'max_age' => 0, // cache preflight for 24h, reduces OPTIONS requests
+    'max_age' => 86400,
 
-    'supports_credentials' => true, // token auth doesn't need cookies/credentials
+    'supports_credentials' => false,
 ];

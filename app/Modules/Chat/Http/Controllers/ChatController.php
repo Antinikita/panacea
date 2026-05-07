@@ -28,10 +28,9 @@ class ChatController extends Controller
             ->orderBy('updated_at', 'desc');
 
         if ($q) {
-            $query->where(function ($w) use ($q) {
-                $w->where('title', 'like', "%{$q}%")
-                    ->orWhereHas('messages', fn ($m) => $m->where('message', 'like', "%{$q}%"));
-            });
+            $driver = DB::connection()->getDriverName();
+            $op = $driver === 'pgsql' ? 'ilike' : 'like';
+            $query->where('title', $op, "%{$q}%");
         }
 
         $paginated = $query->paginate($perPage);
@@ -109,8 +108,21 @@ class ChatController extends Controller
 
                 $this->autoTitle($chat, $validated['message']);
 
-                $history = $this->buildHistory($chat, exclude: $userMessage->id);
-                $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
+                // First turn (no conversation_id yet): send history so the
+                // server can prime its memory. Subsequent turns: omit history
+                // and let the server reconstruct from its own Redis copy.
+                $history = $chat->conversation_id
+                    ? null
+                    : $this->buildHistory($chat, exclude: $userMessage->id);
+                $aiResponse = $this->ai->chat(
+                    $validated['message'],
+                    $history,
+                    $chat->user,
+                    $locale,
+                    $chat->conversation_id,
+                );
+
+                $this->captureConversationId($chat, $aiResponse);
 
                 $assistantMessage = ChatMessage::create([
                     'chat_id' => $chat->id,
@@ -185,11 +197,16 @@ class ChatController extends Controller
             return [$userMessage, $assistantMessage];
         });
 
-        $history = $this->buildHistory($chat, exclude: [$userMessage->id, $assistantMessage->id]);
+        // First turn (no conversation_id yet): send history. Otherwise let
+        // the server reconstruct from its own Redis copy.
+        $history = $chat->conversation_id
+            ? null
+            : $this->buildHistory($chat, exclude: [$userMessage->id, $assistantMessage->id]);
         $user = $chat->user;
         $ai = $this->ai;
+        $conversationId = $chat->conversation_id;
 
-        return new StreamedResponse(function () use ($chat, $userMessage, $assistantMessage, $validated, $history, $user, $ai, $locale) {
+        return new StreamedResponse(function () use ($chat, $userMessage, $assistantMessage, $validated, $history, $user, $ai, $locale, $conversationId) {
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', '0');
             while (ob_get_level() > 0) {
@@ -211,8 +228,9 @@ class ChatController extends Controller
 
             $fullText = '';
             $streamErrored = false;
+            $serverConversationId = null;
             try {
-                foreach ($ai->streamChat($validated['message'], $history, $user, $locale) as $chunk) {
+                foreach ($ai->streamChat($validated['message'], $history, $user, $locale, $conversationId) as $chunk) {
                     $sendEvent($chunk['event'], $chunk['data']);
 
                     if ($chunk['event'] === 'delta' && is_array($chunk['data']) && isset($chunk['data']['text'])) {
@@ -220,6 +238,13 @@ class ChatController extends Controller
                     }
                     if ($chunk['event'] === 'final' && is_array($chunk['data']) && isset($chunk['data']['answer'])) {
                         $fullText = $chunk['data']['answer'];
+                    }
+                    // Server emits conversation_id in `meta` (always first)
+                    // and `final`; keep the most recent one we see.
+                    if (in_array($chunk['event'], ['meta', 'final', 'error'], true)
+                        && is_array($chunk['data'])
+                        && !empty($chunk['data']['conversation_id'])) {
+                        $serverConversationId = $chunk['data']['conversation_id'];
                     }
                     if ($chunk['event'] === 'error') {
                         $streamErrored = true;
@@ -238,6 +263,10 @@ class ChatController extends Controller
                 'message' => $fullText !== '' ? $fullText : 'Unable to generate response',
                 'status' => $streamErrored ? 'partial' : 'complete',
             ]);
+
+            if ($serverConversationId) {
+                $this->captureConversationId($chat, ['conversation_id' => $serverConversationId]);
+            }
 
             $chat->touch();
 
@@ -282,8 +311,20 @@ class ChatController extends Controller
                     ->limit(1)
                     ->delete();
 
+                // Regenerate mutates server-side memory: the previous
+                // assistant turn is gone from our DB so we must override
+                // the server's Redis copy by sending fresh history alongside
+                // conversation_id.
                 $history = $this->buildHistory($chat, exclude: $lastUser->id);
-                $aiResponse = $this->ai->chat($lastUser->message, $history, $chat->user, $locale);
+                $aiResponse = $this->ai->chat(
+                    $lastUser->message,
+                    $history,
+                    $chat->user,
+                    $locale,
+                    $chat->conversation_id,
+                );
+
+                $this->captureConversationId($chat, $aiResponse);
 
                 $msg = ChatMessage::create([
                     'chat_id' => $chat->id,
@@ -342,8 +383,19 @@ class ChatController extends Controller
                     ->where('created_at', '>', $msg->created_at)
                     ->delete();
 
+                // Edit truncates history at the edit point, so we resend
+                // the corrected transcript to override the server's Redis
+                // copy. Same pattern as regenerate.
                 $history = $this->buildHistory($chat, exclude: $msg->id);
-                $aiResponse = $this->ai->chat($validated['message'], $history, $chat->user, $locale);
+                $aiResponse = $this->ai->chat(
+                    $validated['message'],
+                    $history,
+                    $chat->user,
+                    $locale,
+                    $chat->conversation_id,
+                );
+
+                $this->captureConversationId($chat, $aiResponse);
 
                 $assistantMessage = ChatMessage::create([
                     'chat_id' => $chat->id,
@@ -427,20 +479,35 @@ class ChatController extends Controller
         return 'en';
     }
 
+    private function captureConversationId(Chat $chat, array $aiResponse): void
+    {
+        $cid = $aiResponse['conversation_id'] ?? null;
+        if ($cid && $cid !== $chat->conversation_id) {
+            $chat->update(['conversation_id' => $cid]);
+        }
+    }
+
+    private const HISTORY_TURN_CAP = 20;
+
     private function buildHistory(Chat $chat, int|array|null $exclude = null): array
     {
         $query = ChatMessage::where('chat_id', $chat->id)
-            ->where('status', '!=', 'pending')
-            ->orderBy('created_at', 'asc');
+            ->where('status', '!=', 'pending');
 
         if ($exclude !== null) {
             $query->whereNotIn('id', (array) $exclude);
         }
 
-        return $query->get()->map(fn ($m) => [
+        $latest = $query->orderBy('created_at', 'desc')
+            ->limit(self::HISTORY_TURN_CAP)
+            ->get()
+            ->reverse()
+            ->values();
+
+        return $latest->map(fn ($m) => [
             'role' => $m->role,
             'content' => $m->message,
-        ])->values()->all();
+        ])->all();
     }
 
     private function autoTitle(Chat $chat, string $firstMessage): void

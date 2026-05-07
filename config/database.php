@@ -96,6 +96,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            // Issue `SET TIME ZONE '<tz>'` on every connection so Postgres
+            // SQL functions (NOW(), CURRENT_TIMESTAMP, AT TIME ZONE) match
+            // PHP's app.timezone. Without this, Carbon::now() in Laravel
+            // and DB::raw('NOW()') in migrations can drift if the server
+            // OS/Postgres default differs from APP_TIMEZONE.
+            'timezone' => env('DB_TIMEZONE', env('APP_TIMEZONE', 'UTC')),
         ],
 
         'sqlsrv' => [

@@ -7,17 +7,20 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Opt-in idempotency for AI-write endpoints.
  *
  * Clients send a UUID `Idempotency-Key` header on retries; the first call's
- * JSON response is cached for 24h under idempotency:{user_id}:{key}. Subsequent
- * calls with the same key return the cached response, so a network blip that
- * makes a client retry doesn't create duplicate user/assistant messages.
+ * JSON response is cached for 24h under idempotency:{user_id}:{key}.
  *
- * Skips when the header is absent (pure pass-through).
+ * The cached body is encrypted at rest because responses contain decrypted
+ * PII (anamnesis fields, chat messages). Otherwise the file cache would
+ * shadow-copy plaintext medical content into storage/framework/cache for
+ * a full day after every AI write.
  */
 class Idempotency
 {
@@ -39,20 +42,31 @@ class Idempotency
 
         $cacheKey = 'idempotency:'.(Auth::id() ?? 'anon').':'.strtolower($key);
 
-        if ($cached = Cache::get($cacheKey)) {
-            $response = new JsonResponse($cached['body'], $cached['status']);
-            $response->headers->set('Idempotent-Replay', 'true');
+        if ($cipher = Cache::get($cacheKey)) {
+            try {
+                $cached = json_decode(Crypt::decryptString($cipher), true, 512, JSON_THROW_ON_ERROR);
+                $response = new JsonResponse($cached['body'], $cached['status']);
+                $response->headers->set('Idempotent-Replay', 'true');
 
-            return $response;
+                return $response;
+            } catch (\Throwable $e) {
+                Log::warning('Idempotency cache entry could not be decoded; falling through', [
+                    'cache_key' => $cacheKey,
+                    'error' => $e->getMessage(),
+                ]);
+                Cache::forget($cacheKey);
+            }
         }
 
         $response = $next($request);
 
         if ($response instanceof JsonResponse && $response->getStatusCode() < 500) {
-            Cache::put($cacheKey, [
+            $payload = json_encode([
                 'body' => $response->getData(true),
                 'status' => $response->getStatusCode(),
-            ], self::TTL_SECONDS);
+            ], JSON_UNESCAPED_UNICODE);
+
+            Cache::put($cacheKey, Crypt::encryptString($payload), self::TTL_SECONDS);
         }
 
         return $response;

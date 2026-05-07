@@ -64,7 +64,7 @@ it('upserts a same-day metric instead of duplicating', function () {
         'metrics' => [['type' => 'steps', 'value' => 8000, 'unit' => 'count', 'recorded_at' => '2026-04-28T15:00:00Z']],
     ])->assertCreated();
 
-    $rows = DB::table('health_metrics')->where('user_id', $this->user->id)->where('type', 'steps')->get();
+    $rows = \App\Modules\Health\Models\HealthMetric::where('user_id', $this->user->id)->where('type', 'steps')->get();
     expect($rows)->toHaveCount(1);
     expect((float) $rows[0]->value)->toEqual(8000);
 });
@@ -189,4 +189,65 @@ it('exposes the recent snapshot via HealthQueryService for AI profile enrichment
         // Steps row is from yesterday → today's value is null, avg_7d carries it.
         ->and($snapshot['steps']['avg_7d'])->toEqual(5000)
         ->and($snapshot['steps']['norm']['target'])->toEqual(8000);
+});
+
+it('rejects unknown metric type', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'caffeine', 'value' => 200, 'unit' => 'mg', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.type']);
+});
+
+it('rejects unit mismatch (steps with bpm)', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 1000, 'unit' => 'bpm', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.unit']);
+});
+
+it('rejects value outside the per-type sanity range (steps too high)', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 250000, 'unit' => 'count', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.value']);
+});
+
+it('rejects value outside the per-type sanity range (heart_rate too high)', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'heart_rate', 'value' => 9999, 'unit' => 'bpm', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.value']);
+});
+
+it('rejects sleep_duration over 24h', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'sleep_duration', 'value' => 9999, 'unit' => 'minutes', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.value']);
+});
+
+it('rejects recorded_at far in the future', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 1, 'unit' => 'count', 'recorded_at' => now()->addYear()->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.recorded_at']);
+});
+
+it('rejects recorded_at older than 1 year', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 1, 'unit' => 'count', 'recorded_at' => now()->subYears(2)->toIso8601String()]],
+    ])->assertStatus(422)
+      ->assertJsonValidationErrors(['metrics.0.recorded_at']);
+});
+
+it('accepts recorded_at within the future tolerance window', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 1, 'unit' => 'count', 'recorded_at' => now()->addMinutes(2)->toIso8601String()]],
+    ])->assertCreated();
+});
+
+it('accepts a recorded_at exactly at the boundary (~now)', function () {
+    $this->postJson('/api/health/metrics', [
+        'metrics' => [['type' => 'steps', 'value' => 1, 'unit' => 'count', 'recorded_at' => now()->toIso8601String()]],
+    ])->assertCreated();
 });

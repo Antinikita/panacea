@@ -17,11 +17,12 @@ class HealthMetric extends Model
         'unit',
         'source',
         'recorded_at',
+        'recorded_on',
         'metadata',
     ];
 
     protected $casts = [
-        'value' => 'float',
+        'value' => 'encrypted',
         'recorded_at' => 'datetime',
         'metadata' => 'array',
     ];

@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Modules\Auth\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -30,15 +29,21 @@ class RolesAndPermissionsSeeder extends Seeder
         $user = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
         $user->syncPermissions($permissions);
 
-        $adminUser = User::firstOrCreate(
-            ['email' => 'admin@panacea.local'],
-            [
-                'name' => 'Admin',
-                'password' => Hash::make('adminpass'),
-                'sex' => 'male',
-                'age' => 35,
-            ]
-        );
+        // Can't search by `email` directly — it's encrypted with a random
+        // IV per row, so the same plaintext yields different ciphertexts
+        // and WHERE never matches. Use the byEmail() helper which routes
+        // through the email_hash sidecar column.
+        $adminEmail = 'admin@panacea.local';
+        $adminUser = User::byEmail($adminEmail);
+        if (! $adminUser) {
+            $adminUser = new User();
+            $adminUser->name = 'Admin';
+            $adminUser->email = $adminEmail;
+            $adminUser->password = 'adminpass'; // 'hashed' cast applies on save
+            $adminUser->sex = 'male';
+            $adminUser->age = 35;
+            $adminUser->save(); // saving event populates email_hash
+        }
         $adminUser->syncRoles(['admin']);
     }
 }

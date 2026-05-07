@@ -12,13 +12,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES', null));
+
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
             \App\Http\Middleware\RequestId::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
         $middleware->web(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
             \App\Http\Middleware\RequestId::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
         $middleware->alias([
             'idempotency' => \App\Http\Middleware\Idempotency::class,

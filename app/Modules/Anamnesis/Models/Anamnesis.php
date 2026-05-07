@@ -6,6 +6,7 @@ use App\Modules\Auth\Models\User;
 use App\Modules\Chat\Models\Chat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Contracts\Activity;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -31,8 +32,19 @@ class Anamnesis extends Model
     ];
 
     protected $casts = [
-        'ai_raw_response' => 'array',
-        'health_context' => 'array',
+        // Anamnesis text fields and the frozen health snapshot are
+        // medical PII and never queried by content, so they encrypt
+        // at rest. Reads/writes are transparent to controllers.
+        'chief_complaint' => 'encrypted',
+        'history_present_illness' => 'encrypted',
+        'past_medical_history' => 'encrypted',
+        'family_history' => 'encrypted',
+        'social_history' => 'encrypted',
+        'allergies' => 'encrypted',
+        'medications' => 'encrypted',
+        'review_of_systems' => 'encrypted',
+        'health_context' => 'encrypted:array',
+        'ai_raw_response' => 'encrypted:array',
         'generated_at' => 'datetime',
     ];
 
@@ -52,5 +64,12 @@ class Anamnesis extends Model
             ->logFillable()
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
+    }
+
+    public function tapActivity(Activity $activity, string $eventName): void
+    {
+        $props = collect($activity->properties);
+        $changed = array_keys((array) $props->get('attributes', []));
+        $activity->properties = collect(['changed' => $changed]);
     }
 }

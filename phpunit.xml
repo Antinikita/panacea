@@ -16,13 +16,32 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Tests stay on UTC so date-window assertions don't drift with
+             whatever APP_TIMEZONE the dev box runs in. Production reads
+             APP_TIMEZONE from .env (Asia/Almaty for this project). -->
+        <env name="APP_TIMEZONE" value="UTC"/>
         <env name="APP_URL" value="http://localhost"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="AI_USE_MOCK" value="true" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+        <!-- Production uses argon2id (HASH_DRIVER in .env). Tests stay on
+             bcrypt rounds=4 because argon2id at default cost adds ~6x to
+             the suite duration. The argon→bcrypt verification path is
+             covered in AuthTest's needsRehash test. -->
+        <env name="HASH_DRIVER" value="bcrypt"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!-- Tests run against a dedicated Postgres DB on the same instance,
+             so pgvector + JSONB + tsvector code paths are exercised the
+             same way they run in production. Create once with:
+               CREATE DATABASE panacea_testing;
+               \c panacea_testing
+               CREATE EXTENSION vector; CREATE EXTENSION pg_trgm; -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="5433"/>
+        <env name="DB_DATABASE" value="panacea_testing"/>
+        <env name="DB_USERNAME" value="postgres"/>
+        <env name="DB_PASSWORD" value="postgres"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

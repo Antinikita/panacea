@@ -49,14 +49,13 @@ class AIService
         return in_array($primary, $allowed, true) ? $primary : 'en';
     }
 
-    private function buildPayload(string $message, array $history, User $user, string $locale): array
+    private function buildPayload(string $message, ?array $history, User $user, string $locale, ?string $conversationId): array
     {
         $metrics = $this->healthQuery->recentSnapshot($user, 7);
 
-        return [
+        $payload = [
             'message' => $message,
             'locale' => $locale,
-            'history' => $history,
             'profile' => [
                 'age' => $user->age ?? 25,
                 'sex' => $user->sex ?? 'male',
@@ -64,20 +63,35 @@ class AIService
                 'metrics' => $metrics === [] ? (object) [] : $metrics,
             ],
         ];
+
+        // Only send `history` when we actually want to override the
+        // server's Redis-stored history (regenerate/edit, or first turn).
+        // For plain follow-ups the server reconstructs history itself,
+        // saving prompt tokens.
+        if ($history !== null) {
+            $payload['history'] = $history;
+        }
+
+        if ($conversationId) {
+            $payload['conversation_id'] = $conversationId;
+        }
+
+        return $payload;
     }
 
-    public function chat(string $message, array $history, User $user, ?string $locale = null): array
+    public function chat(string $message, ?array $history, User $user, ?string $locale = null, ?string $conversationId = null): array
     {
         $locale = $this->normalizeLocale($locale);
 
         if (env('AI_USE_MOCK', false)) {
             return [
                 'answer' => "(mock, locale={$locale}) I understand. Please continue describing your situation.",
+                'conversation_id' => $conversationId ?: 'mock-'.bin2hex(random_bytes(8)),
                 'mock' => true,
             ];
         }
 
-        $payload = $this->buildPayload($message, $history, $user, $locale);
+        $payload = $this->buildPayload($message, $history, $user, $locale, $conversationId);
 
         Log::info('AIService::chat → POST', ['url' => $this->baseUrl(), 'user_id' => $user->id]);
 
@@ -125,22 +139,24 @@ class AIService
      * Stream a chat response from the ai-service SSE endpoint.
      * Yields associative arrays shaped like ['event' => string, 'data' => array|string].
      */
-    public function streamChat(string $message, array $history, User $user, ?string $locale = null): \Generator
+    public function streamChat(string $message, ?array $history, User $user, ?string $locale = null, ?string $conversationId = null): \Generator
     {
         $locale = $this->normalizeLocale($locale);
 
         if (env('AI_USE_MOCK', false)) {
+            $cid = $conversationId ?: 'mock-'.bin2hex(random_bytes(8));
+            yield ['event' => 'meta', 'data' => ['conversation_id' => $cid]];
             $full = "(mock stream, locale={$locale}) This is a streamed mock response arriving token by token.";
             foreach (explode(' ', $full) as $word) {
                 yield ['event' => 'delta', 'data' => ['text' => $word.' ']];
                 usleep(50000);
             }
-            yield ['event' => 'final', 'data' => ['answer' => $full]];
+            yield ['event' => 'final', 'data' => ['answer' => $full, 'conversation_id' => $cid]];
 
             return;
         }
 
-        $payload = $this->buildPayload($message, $history, $user, $locale);
+        $payload = $this->buildPayload($message, $history, $user, $locale, $conversationId);
         $client = new Client(['connect_timeout' => 10, 'timeout' => 300, 'stream' => true]);
 
         Log::info('AIService::streamChat → POST', ['url' => $this->streamUrl(), 'user_id' => $user->id]);
