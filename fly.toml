@@ -1,0 +1,71 @@
+# Fly.io app config. See DEPLOY.md for the first-time bootstrap steps
+# (creating the app, setting secrets, attaching Supabase Postgres).
+#
+# This file controls steady-state behaviour: how the image is built,
+# what runs on release, the health check, and VM sizing.
+
+app = "panacea-api"
+primary_region = "fra"   # Frankfurt — lowest Fly latency from Almaty
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs on a separate ephemeral VM before the new app VM accepts
+  # traffic. If migrations fail, the deploy aborts and the previous
+  # VM keeps serving — your prod stays live.
+  release_command = "php artisan migrate --force"
+
+# Environment baked into every VM. Secrets (APP_KEY, DB_*, AI_*,
+# SENTRY_*, HEALTH_PROBE_TOKEN) live in `fly secrets`, never here.
+[env]
+  APP_ENV = "production"
+  APP_DEBUG = "false"
+  APP_URL = "https://panacea-api.fly.dev"
+  LOG_CHANNEL = "stderr"        # Captured by `fly logs`
+  LOG_LEVEL = "info"
+  DB_CONNECTION = "pgsql"
+  SESSION_DRIVER = "database"
+  CACHE_STORE = "database"
+  QUEUE_CONNECTION = "database"
+  # AI service: teammate's Python FastAPI deployed at health-ai-service.fly.dev.
+  # The Fly-secret values take precedence over these defaults at runtime,
+  # but we keep the literals in sync so the repo is self-documenting.
+  # If the upstream goes down: `fly secrets set AI_USE_MOCK=true` to fall back.
+  AI_USE_MOCK = "false"
+  AI_MODULE_URL = "https://health-ai-service.fly.dev/v1/chat"
+
+[[services]]
+  internal_port = 80
+  protocol = "tcp"
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # min=1 keeps one machine warm so the in-VM scheduler (schedule:work
+  # under supervisord) actually runs the daily token prune and weekly
+  # activity-log retention from routes/console.php. With min=0 those
+  # cleanups silently never fire because the VM sleeps. Costs roughly
+  # a couple dollars a month for the always-on machine; cheap insurance
+  # against the cron jobs being a fiction.
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "2s"
+    method = "get"
+    path = "/api/health"
+    grace_period = "30s"
+
+# Smallest VM that fits php-fpm + nginx + queue + scheduler comfortably.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024

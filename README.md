@@ -409,6 +409,49 @@ npm install
 
 ---
 
+## Run via Docker (alternative to XAMPP)
+
+If you'd rather not run XAMPP, the repo ships a Dockerfile + `docker-compose.yml` that brings up the whole stack — Laravel (php-fpm + nginx + queue + scheduler under supervisord) plus Postgres with pgvector — in one command.
+
+The XAMPP path keeps working in parallel; pick whichever you prefer.
+
+```bash
+# First time
+cp .env.example .env
+# Then edit .env: set DB_HOST=db (compose service name)
+docker compose up --build
+
+# Subsequent runs
+docker compose up
+```
+
+The app is reachable at `http://localhost:8080`. Postgres is on `localhost:5433` (same port as the XAMPP-friendly setup, so `pgAdmin` connections survive the switch).
+
+### Mock AI service
+
+When the teammate's Python AI service isn't reachable, the Laravel side already short-circuits on `AI_USE_MOCK=true` and returns a stubbed response. For end-to-end tests that hit the network anyway, an even-smaller mock is included under a compose profile:
+
+```bash
+docker compose --profile mock up
+```
+
+Set `AI_MODULE_URL=http://mock-ai:8001/v1/chat` in `.env` to point Laravel at it.
+
+### Tearing down
+
+```bash
+docker compose down            # stop containers, keep volumes
+docker compose down -v         # nuke volumes too (pg data + storage)
+```
+
+---
+
+## Deploying to production
+
+See [DEPLOY.md](./DEPLOY.md) for the Fly.io + Supabase + Vercel walkthrough.
+
+---
+
 ## License
 
 MIT.

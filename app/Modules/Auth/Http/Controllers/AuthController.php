@@ -358,4 +358,43 @@ class AuthController extends Controller
             'token_type' => 'Bearer',
         ], 201);
     }
+
+    /**
+     * Admin-only roster of every registered user. Emails come back
+     * decrypted because the model's `'email' => 'encrypted'` cast
+     * runs on attribute access. Route is gated behind role:admin
+     * (see Auth/routes.php) so leaking PII to a regular user is
+     * impossible by construction, not by view-template discipline.
+     */
+    public function adminUsersList(Request $request)
+    {
+        // Cap per_page low enough that a single compromised admin token
+        // can't dump the entire table in a handful of requests. 50 is
+        // generous for any legitimate UI while keeping max-exfil-per-
+        // request modest: 50 × 5 req/min = 250 rows/min, not thousands.
+        $perPage = min(max((int) $request->integer('per_page', 25), 1), 50);
+
+        $page = User::with('roles:id,name')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        // Audit log is handled by the `admin.audit` middleware on the
+        // route group — every admin endpoint inherits it automatically.
+
+        $page->getCollection()->transform(fn ($u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+            'sex' => $u->sex,
+            'age' => $u->age,
+            'roles' => $u->roles->pluck('name')->all(),
+            'email_verified_at' => $u->email_verified_at?->toIso8601String(),
+            'created_at' => $u->created_at?->toIso8601String(),
+        ]);
+
+        // PII payload — must not be cached by any intermediary.
+        return response()->json($page)
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate')
+            ->header('Pragma', 'no-cache');
+    }
 }

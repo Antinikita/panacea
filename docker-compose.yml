@@ -1,0 +1,68 @@
+# Local development alternative to the XAMPP path. The XAMPP setup
+# documented in README.md keeps working — this is opt-in via
+# `docker compose up`.
+#
+# Three services:
+#   app      → the Laravel image (Dockerfile in this repo)
+#   db       → Postgres with pgvector preinstalled, matching CI
+#   mock-ai  → only spins up under `--profile mock`; serves a canned
+#              response so chat/anamnesis endpoints don't blow up when
+#              the teammate's Python service isn't reachable.
+
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "8080:80"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      # Compose users want migrations to run on boot. Fly leaves this
+      # unset because its release_command handles it on a separate VM.
+      DOCKER_RUN_MIGRATIONS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Mount storage so logs / cache survive container rebuilds in dev.
+      - app_storage:/var/www/html/storage
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_DATABASE:-panacea}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-ai:
+    profiles: ["mock"]
+    image: node:20-alpine
+    working_dir: /app
+    command: >
+      sh -c "echo 'const http=require(\"http\");
+      const PORT=${PORT:-8001};
+      http.createServer((req,res)=>{
+        if(req.url.startsWith(\"/v1/health\")){res.writeHead(200);return res.end(\"ok\");}
+        let body=\"\";req.on(\"data\",c=>body+=c);req.on(\"end\",()=>{
+          res.writeHead(200,{\"Content-Type\":\"application/json\"});
+          res.end(JSON.stringify({reply:\"(mock) The AI service is not connected. This is a stub response.\",usage:{prompt_tokens:0,completion_tokens:0}}));
+        });
+      }).listen(PORT,()=>console.log(\"mock-ai on \"+PORT));' > server.js && node server.js"
+    ports:
+      - "8001:8001"
+
+volumes:
+  pgdata:
+  app_storage:

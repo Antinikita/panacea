@@ -1,0 +1,28 @@
+{
+    "_comment": "Pre-commit hooks for panacea. Keep these fast (<5s typical) — slow hooks get bypassed with --no-verify and rot. Install: `vendor/bin/captainhook install -f` (composer post-install also runs this).",
+    "config": {
+        "verbosity": "normal",
+        "fail-on-first-error": false,
+        "git-directory": ".git"
+    },
+    "pre-commit": {
+        "enabled": true,
+        "actions": [
+            {
+                "_comment": "Invoke pint via the php interpreter so the same config works on Windows (no shebang support) and *nix.",
+                "action": "php vendor/bin/pint --dirty",
+                "options": [],
+                "conditions": [
+                    {
+                        "exec": "\\CaptainHook\\App\\Hook\\Condition\\FileStaged\\OfType",
+                        "args": ["php"]
+                    }
+                ]
+            }
+        ]
+    },
+    "commit-msg": {
+        "enabled": false,
+        "actions": []
+    }
+}

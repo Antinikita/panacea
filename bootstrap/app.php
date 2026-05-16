@@ -26,10 +26,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'idempotency' => \App\Http\Middleware\Idempotency::class,
+            'admin.audit' => \App\Http\Middleware\LogsAdminActivity::class,
+            'sanctum.inactivity' => \App\Http\Middleware\RevokeIdleSanctumTokens::class,
+            // Spatie permission middlewares — registered explicitly because
+            // we don't autoload Spatie's package middleware aliases.
+            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(function ($request) {
             return $request->is('api/*') || $request->expectsJson();
         });
+
+        // No-op when SENTRY_LARAVEL_DSN is empty (local dev). In prod
+        // it captures unhandled exceptions and HTTP 5xx with breadcrumbs.
+        \Sentry\Laravel\Integration::handles($exceptions);
     })->create();

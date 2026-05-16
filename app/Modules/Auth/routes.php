@@ -17,7 +17,19 @@ Route::middleware('signed')
     ->get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
     ->name('verification.verify');
 
-Route::middleware(['auth:sanctum', 'throttle:api-default'])->group(function () {
+// Admin-only endpoints. role:admin is the spatie/laravel-permission
+// middleware; non-admin tokens hit a 403 long before the controller.
+// admin.audit middleware writes a Spatie activitylog entry on every
+// hit so future admin routes added here automatically inherit
+// surveillance — no per-controller boilerplate to forget.
+// throttle:5,1 caps a compromised admin token's exfil burst.
+Route::middleware(['auth:sanctum', 'sanctum.inactivity', 'role:admin', 'admin.audit', 'throttle:5,1'])
+    ->prefix('admin')
+    ->group(function () {
+        Route::get('/users', [AuthController::class, 'adminUsersList']);
+    });
+
+Route::middleware(['auth:sanctum', 'sanctum.inactivity', 'throttle:api-default'])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::patch('/user', [AuthController::class, 'updateProfile']);
     Route::put('/user/password', [AuthController::class, 'updatePassword']);

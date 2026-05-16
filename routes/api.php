@@ -27,27 +27,54 @@ Route::get('/health/deep', function (\Illuminate\Http\Request $request) {
         return response()->json(['error' => 'Unauthorized'], 401);
     }
 
-    $aiBase = rtrim(env('AI_MODULE_URL', ''), '/');
+    $aiUrl = (string) env('AI_MODULE_URL', '');
     $ai = ['status' => 'unknown', 'latency_ms' => null];
 
-    if ($aiBase) {
+    if ($aiUrl) {
+        // Probe the SAME endpoint Laravel actually calls, with the SAME
+        // auth header, so a token mismatch surfaces here instead of
+        // looking healthy. POST an empty body — the service should
+        // reject it with 422 (missing field) but ONLY after passing
+        // auth. 401/403 mean the token is wrong; 5xx means the
+        // service itself is broken. Anything else (200, 422, 400)
+        // means "reachable and authenticated", which is what we
+        // actually need to report.
         $start = microtime(true);
         try {
-            $response = Http::connectTimeout(3)->timeout(3)->get($aiBase);
-            $ai = [
-                'status' => $response->status() < 500 ? 'ok' : 'down',
-                'latency_ms' => (int) ((microtime(true) - $start) * 1000),
-            ];
+            $response = Http::withHeaders([
+                'X-Service-Token' => (string) env('AI_SERVICE_TOKEN', ''),
+                'Content-Type' => 'application/json',
+            ])
+                ->connectTimeout(3)
+                ->timeout(5)
+                ->post($aiUrl, []);
+
+            $code = $response->status();
+            $latency = (int) ((microtime(true) - $start) * 1000);
+
+            if ($code === 401 || $code === 403) {
+                $ai = ['status' => 'unauthorized', 'http' => $code, 'latency_ms' => $latency];
+            } elseif ($code >= 500) {
+                $ai = ['status' => 'down', 'http' => $code, 'latency_ms' => $latency];
+            } else {
+                $ai = ['status' => 'ok', 'http' => $code, 'latency_ms' => $latency];
+            }
         } catch (ConnectionException $e) {
             $ai = [
                 'status' => 'down',
+                'http' => null,
                 'latency_ms' => (int) ((microtime(true) - $start) * 1000),
             ];
         }
     }
 
+    // 200 only when auth handshake actually works. 503 for any failure
+    // mode (down OR unauthorized) so external uptime monitors can alert
+    // on the real condition, not just "service responded at all".
+    $httpStatus = $ai['status'] === 'ok' ? 200 : 503;
+
     return response()->json([
         'laravel' => 'ok',
         'ai_service' => $ai,
-    ], $ai['status'] === 'down' ? 503 : 200);
+    ], $httpStatus);
 });

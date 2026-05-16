@@ -1,0 +1,41 @@
+# Build artifacts and local-only state — never ship these.
+vendor
+node_modules
+.git
+.github
+.idea
+.vscode
+
+# Local env + secrets. The container reads from Fly secrets / compose
+# env_file at runtime; baking .env in would leak APP_KEY.
+.env
+.env.*
+!.env.example
+
+# public/storage is the artisan storage:link symlink. Windows reports
+# it as an unknown file mode and breaks the build context tar; the
+# container regenerates the link via `php artisan storage:link` if
+# uploaded-asset URLs are needed in prod.
+public/storage
+
+# Test / dev clutter
+tests
+phpunit.xml
+.phpunit.cache
+database/database.sqlite
+*.log
+storage/logs/*
+!storage/logs/.gitkeep
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+
+# Documentation that doesn't belong in a runtime image
+README.md
+DEPLOY.md
+docs/

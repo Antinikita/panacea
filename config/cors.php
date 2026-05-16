@@ -10,6 +10,13 @@ return [
 
     'allowed_origins_patterns' => [
         '#^http://(localhost|127\.0\.0\.1):\d+$#',
+        // Vercel preview deploys land on dynamic subdomains like
+        // bagyt-git-feat-x-antinikitas-projects.vercel.app. We match
+        // ONLY this project's preview URLs — `bagyt-...-antinikitas-projects` —
+        // because a wildcard `*.vercel.app` would admit every other
+        // Vercel customer's site into our CORS-credentialed origin list,
+        // turning their apps into vectors against our API.
+        '#^https://bagyt(-[a-z0-9-]+)?-antinikitas-projects\.vercel\.app$#',
     ],
 
     'allowed_headers' => [

@@ -33,13 +33,23 @@ class RolesAndPermissionsSeeder extends Seeder
         // IV per row, so the same plaintext yields different ciphertexts
         // and WHERE never matches. Use the byEmail() helper which routes
         // through the email_hash sidecar column.
-        $adminEmail = 'admin@panacea.local';
+        // Admin user. Credentials come from env vars so a fresh
+        // production seed never plants known credentials. Local-dev
+        // fallback uses a per-run random password printed to stdout —
+        // never commit a static default that could ship to prod.
+        $adminEmail = (string) env('ADMIN_SEED_EMAIL', 'admin@panacea.local');
+        $adminPassword = (string) env('ADMIN_SEED_PASSWORD', '');
+        if ($adminPassword === '') {
+            $adminPassword = bin2hex(random_bytes(12));
+            $this->command?->warn("ADMIN_SEED_PASSWORD not set — generated dev password: {$adminPassword}");
+        }
+
         $adminUser = User::byEmail($adminEmail);
         if (! $adminUser) {
             $adminUser = new User();
             $adminUser->name = 'Admin';
             $adminUser->email = $adminEmail;
-            $adminUser->password = 'adminpass'; // 'hashed' cast applies on save
+            $adminUser->password = $adminPassword; // 'hashed' cast applies on save
             $adminUser->sex = 'male';
             $adminUser->age = 35;
             $adminUser->save(); // saving event populates email_hash
